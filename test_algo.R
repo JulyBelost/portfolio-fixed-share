@@ -5,12 +5,13 @@ herst_exp_5 <- read.table("Ru5_hexp.csv", sep = ',', header = TRUE)
 a = c(0.5, 0.7)
 b = c(0.1, 0.25)
 
-xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
-yi = function(b){ c(0, b, 0.5, 1-b, 1)}
-
-herst_to_trust_level = pchipfun(xi(a[1]), yi(b[1]))
-
-trust_level = sapply(herst_exp_5, herst_to_trust_level)
+ht_to_pt = function(a, b, h_df){
+  xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
+  yi = function(b){ c(0, b, 0.5, 1-b, 1)}
+  
+  trust_level = sapply(h_df, pchipfun(xi(a), yi(b)))
+  return(trust_level)
+}
 
 run_pfs = function(price_ratio, trust_level){
   # Initial parameters
@@ -48,5 +49,12 @@ run_pfs = function(price_ratio, trust_level){
   return(K)
 }
 
-K = run_pfs(herst_exp_5, trust_level)
+K = run_pfs(price_ratio_5, ht_to_pt(a[1],b[1], herst_exp_5))
+K_z = run_pfs(price_ratio_5, )
+  
+
 K_n = rowMeans(sapply(price_ratio_5, cumprod))
+
+par(mfrow = c(1, 2))
+plot(K_n)
+plot(K)
