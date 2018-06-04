@@ -3,18 +3,13 @@ trust_level <- read.table("Ru5_hexp.csv", sep = ',', header = TRUE)
 
 # Initial parameters
 T <- nrow(price_ratio)      # number of steps
-
-X_t <- c()
-
 N <- ncol(price_ratio)    # number of instruments
-
-#alpha = 1/t
 
 w_ <- c()                      # w^*
 w <- rep(1/N, N)               # w
 w_m <- rep(1/N, N)             # w^m
 
-
+X_t <- c()
 
 # Algorithm
 for (t in 1:T){
@@ -28,7 +23,7 @@ for (t in 1:T){
   
   
   # LOSS UPDATE
-  w_m = (w * (p_t*x_t + (1 - p_t)*x_t))/X_t[t]
+  w_m = (w * (p_t*x_t + (1 - p_t)*X_t[t]))/X_t[t]
   
   # MIXING(Fixed-Share) UPDATE
   alpha = 1/t
@@ -37,3 +32,4 @@ for (t in 1:T){
 }
 
 K = cumprod(X_t) # portfolio wealth
+
