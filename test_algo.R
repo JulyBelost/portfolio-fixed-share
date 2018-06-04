@@ -50,11 +50,11 @@ run_pfs = function(price_ratio, trust_level){
 }
 
 K = run_pfs(price_ratio_5, ht_to_pt(a[1],b[1], herst_exp_5))
-K_z = run_pfs(price_ratio_5, )
-  
-
+K_z = run_pfs(price_ratio_5, herst_exp_5*1)
 K_n = rowMeans(sapply(price_ratio_5, cumprod))
 
-par(mfrow = c(1, 2))
-plot(K_n)
+#par(mfrow = c(1, 2))
 plot(K)
+points(K_n, col = "blue")
+points(K_z, col = "red")
+
