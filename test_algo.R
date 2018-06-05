@@ -1,7 +1,7 @@
 price_ratio_5 <- read.table("Ru5_data.csv", sep = ',', header = TRUE)
 herst_exp_5 <- read.table("Ru5_hexp.csv", sep = ',', header = TRUE)
-# price_ratio_11 <- read.table("Ru11_data.csv", sep = ',', header = TRUE)
-# herst_exp_11 <- read.table("Ru11_hexp.csv", sep = ',', header = TRUE)
+price_ratio_11 <- read.table("Ru11_data.csv", sep = ',', header = TRUE)
+herst_exp_11 <- read.table("Ru11_hexp.csv", sep = ',', header = TRUE)
 a = c(0.5, 0.7)
 b = c(0.1, 0.25)
 
@@ -40,21 +40,33 @@ run_pfs = function(price_ratio, trust_level){
     
     # MIXING(Fixed-Share) UPDATE
     alpha = 1/t
+    
     w = alpha/N + (1 - alpha)*w_m
     
   }
   
-  K = cumprod(c(1,X_t)) # portfolio wealth
+  K = cumprod(X_t) # portfolio wealth
   
   return(K)
 }
 
-K = run_pfs(price_ratio_5, ht_to_pt(a[1],b[1], herst_exp_5))
-K_z = run_pfs(price_ratio_5, herst_exp_5*1)
-K_n = rowMeans(sapply(price_ratio_5, cumprod))
+run_main = function(price_ratio, herst_exp){ 
+  K = run_pfs(price_ratio, ht_to_pt(a[1],b[1], herst_exp))
+  K_z = run_pfs(price_ratio, (herst_exp*0)+1)
+  K_n = rowMeans(sapply(price_ratio, cumprod))
+  
+  #par(mfrow = c(1, 2))
+  plot(K, pch = "*")
+  points(K_z, pch = "*", col = "blue")
+  points(K_n, pch = "*", col = "red")
+  
+  print(sum(K>K_n)/length(K))
+  print(sum(K>K_z)/length(K))
+  print(sum(K_z>K_n)/length(K))
+  print(head(K))
+  print(tail(K))
+  print(tail(K_n))
+}
 
-#par(mfrow = c(1, 2))
-plot(K)
-points(K_n, col = "blue")
-points(K_z, col = "red")
-
+run_main(price_ratio_11, herst_exp_11)
+run_main(price_ratio_5, herst_exp_5)
