@@ -63,7 +63,6 @@ run_main = function(price_ratio, herst_exp){
   print(sum(K>K_n)/length(K))
   print(sum(K>K_z)/length(K))
   print(sum(K_z>K_n)/length(K))
-  print(head(K))
   print(tail(K))
   print(tail(K_n))
 }
