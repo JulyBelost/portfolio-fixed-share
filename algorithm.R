@@ -1,47 +1,63 @@
-T <- 10      # number of steps
+#########################################################################################
+# setClass('finamDate')
+# setAs("character","finamDate", 
+#       function(from) {date_str <- as.character(from)
+#                       good_str <- ifelse(nchar(date_str)==6, date_str, paste("0", date_str, sep=""))
+#                       factor(as.Date(good_str, "%d%m%y")) })
+# 
+# stocks = read.delim("finam_output.txt", 
+#                   sep = ",", 
+#                   col.names = c("ticker", "per", "date", "time",  
+#                                 "open", "high", "low", "close", "vol"),
+#                   colClasses = c("factor", "NULL", "finamDate", "NULL",
+#                                  "NULL", "NULL", "NULL", "numeric", "NULL"))
+# 
+# stocks = transform(stocks, 
+#             price_ratio=ave(close, ticker, FUN=function(y) c(1, tail(y, -1) / head(y, -1))))
+# 
+# #добавить матрицу с р-шками, где они считаются. добавить столбец с ними в stocks
+# stocks$trust_level <- rep(1)
+################################### DATA LOADING ########################################
 
-K_0 <- 1      # initial wealth
-K <- c()      
 
-N <- 9         # number of experts
+companies <- levels(stocks$ticker)
 
-alpha <- 0.5
+# Initial parameters
+T <- nlevels(stocks$date)      # number of steps
 
-w <- rep(1/N, N)
-w_m <- rep(1/N, N)
+X_t <- c()
 
-companies <- levels(stocks$X.TICKER.)
+N <- nlevels(stocks$ticker)    # number of instruments
 
-# for (i in 1:nrow(stocks)){
-#   date_str <- as.character(stocks$X.DATE.[i])
-#   good_str <- ifelse(nchar(date_str)==6, date_str, paste("0", date_str, sep=""))
-#   stocks$date[i] <- as.Date(good_str, "%d%m%y")
-# }
+#alpha = 1/t
 
-#stocks$date <- factor(stocks$date)
+w_ <- c()                      # w^*
+w <- rep(1/N, N)               # w
+w_m <- rep(1/N, N)             # w^m
 
 
+
+# Algorithm
 for (t in 1:T){
   day <- stocks$date[order(levels(stocks$date))[t]]
-  #print (day)
-  x <- subset(stocks, subset = date == day)[c('X.TICKER.','X.OPEN.')]
-  #print (x)
-  X_t <- 0
-  for (i in 1:N){
-    X_t <- X_t + x[i,2]*w[i]
-  }
+
+  inputs = subset(stocks, subset = date == day)
+  p_t = inputs$trust_level
+  
+  w_ = (p_t*w)/sum(p_t*w)
+  
+  x_t = inputs$price_ratio
+  
+  X_t[t] <- sum(x_t*w_)
+
   
   # LOSS UPDATE
-  for (i in 1:N){
-    w_m[i] <- (w[i] * x[i,2])/X_t
-  }
+  w_m = (w * (p_t*x_t + (1 - p_t)*X_t[t]))/X_t[t]
+
   # MIXING(Fixed-Share) UPDATE
-  for (i in 1:N){
-    w[i] <- alpha/N + (1- alpha)*w_m[i]
-  }
-  print(paste("xt", X_t))
-  print("wm")
-  print(w_m)
-  print("w")
-  print(w)
+  alpha = 1/t
+  w = alpha/N + (1 - alpha)*w_m
+  
 }
+
+K = cumprod(X_t) # portfolio wealth
