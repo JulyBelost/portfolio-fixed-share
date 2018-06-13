@@ -1,21 +1,21 @@
-# prepared price ratio and herst exponent tables for two sets of instruments
+# prepared price ratio and hurst exponent tables for two sets of instruments
 price_ratio_5 <- read.table("Ru5_data.csv", sep = ',', header = TRUE)
-herst_exp_5 <- read.table("Ru5_hexp.csv", sep = ',', header = TRUE)
+hurst_exp_5 <- read.table("Ru5_hexp.csv", sep = ',', header = TRUE)
 price_ratio_11 <- read.table("Ru11_data.csv", sep = ',', header = TRUE)
-herst_exp_11 <- read.table("Ru11_hexp.csv", sep = ',', header = TRUE)
+hurst_exp_11 <- read.table("Ru11_hexp.csv", sep = ',', header = TRUE)
 
 # algorithm parameters
 a = c(0.5, 0.7)
 b = c(0.1, 0.25)
 alpha = c(0.001,0.01,0.1,0.25,1)
 
-# herst exponent transformation into trust levels
-ht_to_pt = function(a, b, herst_df){
+# hurst exponent transformation into trust levels
+ht_to_pt = function(a, b, hurst_df){
   xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
   yi = function(b){ c(0, b, 0.5, 1-b, 1)}
   # plot(xi(a),yi(b))
   
-  trust_level_df = sapply(herst_df, pchipfun(xi(a), yi(b)))
+  trust_level_df = sapply(hurst_df, pchipfun(xi(a), yi(b)))
   return(trust_level_df)
 }
 
@@ -57,7 +57,7 @@ run_portfolio_fs = function(price_ratio_df, trust_level_df, alpha){
   return(K)
 }
 
-run_main = function(price_ratio_df, herst_exp_df){
+run_main = function(price_ratio_df, hurst_exp_df){
   # portfolio wealth vector for Buy and Hold algorithm
   K_n = rowMeans(sapply(price_ratio_df, cumprod))
   
@@ -68,13 +68,13 @@ run_main = function(price_ratio_df, herst_exp_df){
     for(i in 1:length(a)){
       for(j in 1:length(b)){
         # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
-        K = run_portfolio_fs(price_ratio_df, ht_to_pt(a[i],b[j], herst_exp_df), alpha[l])
+        K = run_portfolio_fs(price_ratio_df, ht_to_pt(a[i],b[j], hurst_exp_df), alpha[l])
         
         res[nrow(res) + 1,] = list(a[i],b[j],alpha[l],tail(K, n=1), tail(K_n, n=1),sum(K>K_n)/length(K))
       }
     }
     # portfolio wealth vector for Singer Portfolio algorithm
-    K_z = run_portfolio_fs(price_ratio_df, (herst_exp_df*0)+1, alpha[l])
+    K_z = run_portfolio_fs(price_ratio_df, (hurst_exp_df*0)+1, alpha[l])
     
     res[nrow(res) + 1,] = list(1,1, alpha[l], tail(K_z, n=1), tail(K_n, n=1), sum(K_z>K_n)/length(K_z)) 
   }
@@ -86,6 +86,6 @@ run_main = function(price_ratio_df, herst_exp_df){
   # points(K_n, pch = "*", col = "red")
 }
 
-#res11 = run_main(price_ratio_11, herst_exp_11)
-res5 = run_main(price_ratio_5, herst_exp_5)
+#res11 = run_main(price_ratio_11, hurst_exp_11)
+res5 = run_main(price_ratio_5, hurst_exp_5)
 write.table(res5, file="res.txt")
