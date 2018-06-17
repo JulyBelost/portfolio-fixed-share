@@ -1,4 +1,5 @@
 library(data.table)
+library(ggplot2)
 library(pracma)
 library(useful)
 library(rowr)
@@ -9,7 +10,9 @@ setClass('finamDate')
 setAs("character","finamDate",
       function(from) {date_str <- as.character(from)
                       good_str <- ifelse(nchar(date_str)==6, date_str, paste("0", date_str, sep=""))
-                      factor(as.Date(good_str, "%d%m%y")) })
+                      as.Date(good_str, "%d%m%y") })
+                      #factor(as.Date(good_str, "%d%m%y")) })
+
 
 Hs = function(ts){
   return(hurstexp(ts, display=FALSE)[1])
@@ -17,17 +20,38 @@ Hs = function(ts){
 
 
 load_data = function(){
-  finam_data = read.delim("test.txt",
+  finam_data = read.delim("stocks_10012012_10012018_short.txt",
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
                     colClasses = c("factor", "NULL", "finamDate", "character",
                                    "numeric", "NULL", "NULL", "numeric", "NULL"))
   
-  stocks_raw = rbindlist(lapply(split(finam_data, list(finam_data$ticker, finam_data$date), lex.order = TRUE), 
-                            function(x) data.frame(head(x,1)[,1:2], 
-                                                   price_ratio = tail(x$close, 1)/head(x$open, 1), 
-                                                   ts =I(list(rbind(x$close, x$open))) )))
+# обработать ошибку когда нет данных за какие то дни
+# Error in data.frame(head(x, 1)[, 1:2], price_ratio = tail(x$close, 1)/head(x$open,  : 
+#                   arguments imply differing number of rows: 0, 1
+  # [1] ticker date   time   open   close 
+  # <0 rows> (or 0-length row.names)
+  #finam_data = finam_data[!(finam_data$ticker=="BANE" | finam_data$ticker=="GAZP"),]
+  
+  # stocks_raw = rbindlist(lapply(split(finam_data, list(finam_data$ticker, finam_data$date), lex.order = TRUE), 
+  #                               function(x) {
+  #                                 print (head(x, 1)[,1:2])
+  #                                 data.frame(head(x,1)[,1:2], 
+  #                                            price_ratio = tail(x$close, 1)/head(x$open, 1), 
+  #                                            ts =I(list(rbind(x$close, x$open))))
+  #                               }))
+  
+  stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker, lex.order = TRUE), 
+                            function(df) { 
+                              rbindlist(lapply(split(df, df$date, lex.order = TRUE),
+                              function(x) {
+                                print (head(x, 1)[,1:2])
+                                data.frame(head(x,1)[,1:2], 
+                                           price_ratio = tail(x$close, 1)/head(x$open, 1), 
+                                           ts =I(list(rbind(x$close, x$open))))
+                              }))
+                            }))
   
   # tail's argument n = -(window-1)
   stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
@@ -47,7 +71,7 @@ load_data = function(){
 ht_to_pt = function(a, b, hurst){
   xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
   yi = function(b){ c(0, b, 0.5, 1-b, 1)}
-  plot(xi(a),yi(b))
+  plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
@@ -96,17 +120,25 @@ run_portfolio_fs = function(stocks, alpha){
   return(K)
 }
 
-
+#TODO: load only if there is no finam_data yet
 stocks = load_data()
+stocks$date = as.factor(stocks$date)
 
+for (d in levels(stocks$date)){
+  if (nrow(stocks[stocks$date==d,]) != 8){
+    stocks = stocks[!(stocks$date==d),]
+  }
+}
 
 # algorithm parameters
-a = c(0.5, 0.7)
-b = c(0.1, 0.25)
+
+a = c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
+b = c(0.01, 0.05, 0.1, 0.15, 0.25, 0.3, 0.4, 0.5)
 alpha = c(0.001,0.01,0.1,0.25,1)
 
 # portfolio wealth vector for Buy and Hold algorithm
-K_n = rowMeans(data.frame(lapply(split(stocks_raw$price_ratio, stocks_raw$ticker), cumprod)))
+K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
+K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
                               
 # algorithms evaluation output
 res <- data.frame(matrix(ncol = 6, nrow = 0))
@@ -137,3 +169,5 @@ for(l in 1:length(alpha)){
 # plot(K, pch = "*")
 # points(K_z, pch = "*", col = "blue")
 # points(K_n, pch = "*", col = "red")
+
+write.table(res, file="new_stocks_moex_top_short.txt")
