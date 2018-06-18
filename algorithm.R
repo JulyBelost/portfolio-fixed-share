@@ -19,8 +19,8 @@ Hs = function(ts){
 }
 
 
-load_data = function(){
-  finam_data = read.delim("stocks_10012012_10012018_short_new.txt",
+load_data = function(exp_len){
+  finam_data = read.delim("stocks_10012012_10012018_short_new_new.txt",
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
@@ -30,10 +30,10 @@ load_data = function(){
 
   
   stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker, lex.order = TRUE), 
-                            function(df) { 
+                            function(df) {
+                              print (df[1,1])
                               rbindlist(lapply(split(df, df$date, lex.order = TRUE),
                               function(x) {
-                                print (head(x, 1)[,1:2])
                                 data.frame(head(x,1)[,1:2], 
                                            price_ratio = tail(x$close, 1)/head(x$open, 1), 
                                            ts =I(list(rbind(x$close, x$open))))
@@ -43,9 +43,9 @@ load_data = function(){
   # tail's argument n = -(window-1)
   stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
                             FUN=function(df) {
-                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -19)
+                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
                               new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
-                                                        window=20,minimum=20, align='right'))
+                                                        window=exp_len,minimum=exp_len, align='right'))
                               new_df
                               }))
   
@@ -108,15 +108,15 @@ run_portfolio_fs = function(stocks, alpha){
 }
 
 #TODO: load only if there is no finam_data yet
-stocks = load_data()
+stocks = load_data(20)
 stocks$date = as.factor(stocks$date)
 
 for (d in levels(stocks$date)){
-    avail_tickers = stocks[date==d,]$ticker
+    avail_tickers = subset(stocks, subset = date == d)$ticker
     lvls = levels(stocks$ticker)
     
     for (t in lvls[!lvls %in% avail_tickers]  ){
-      stocks[nrow(stocks) + 1,] = c(ticker = t, date = d, price_ratio = 1, hurst = 0)
+      stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
     }
 }
 
@@ -144,10 +144,12 @@ K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
 
                               
 # algorithms evaluation output
-res <- data.frame(matrix(ncol = 10, nrow = 0))
-names <- c("a", "b", "alpha", "profit", "B&H profit", ">B&H", "Singer profit", ">Singer", "CRP profit", ">CRP")
+res <- data.frame(matrix(ncol = 11, nrow = 0))
+names <- c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
+           "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
 colnames(res) <- names
 
+b_s = max(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), prod)))
 
 for(l in 1:length(alpha)){
   print(paste("alpha", alpha[l]))
@@ -159,7 +161,7 @@ for(l in 1:length(alpha)){
   res[nrow(res) + 1,] = list(1, 1, alpha[l], tail(K_z, 1), 
                              tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
                              tail(K_z, 1), 0, 
-                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z)) 
+                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), b_s) 
   
   for(i in 1:length(a)){
     for(j in 1:length(b)){
@@ -174,14 +176,14 @@ for(l in 1:length(alpha)){
       points(K_z, pch = "*", col = "blue")
       points(K, pch = "*", col = "red")
       
-      res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1), 
-                                 tail(K_n, 1), sum(K>K_n)/length(K), 
-                                 tail(K_z, 1), sum(K>K_z)/length(K), 
-                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K))
+      res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1),
+                                 tail(K_n, 1), sum(K>K_n)/length(K),
+                                 tail(K_z, 1), sum(K>K_z)/length(K),
+                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), b_s)
     }
   }
 }
 
-  # par(mfrow = c(1, 2))
+  #par(mfrow = c(1, 2))
 
 #write.table(res, file="AFLT_GMKN_YAND_2014_2018_10days.txt")
