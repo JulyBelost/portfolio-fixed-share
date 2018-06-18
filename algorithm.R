@@ -20,27 +20,14 @@ Hs = function(ts){
 
 
 load_data = function(){
-  finam_data = read.delim("stocks_10012012_10012018_short.txt",
+  finam_data = read.delim("stocks_10012012_10012018_short_new.txt",
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
                     colClasses = c("factor", "NULL", "finamDate", "character",
                                    "numeric", "NULL", "NULL", "numeric", "NULL"))
   
-# обработать ошибку когда нет данных за какие то дни
-# Error in data.frame(head(x, 1)[, 1:2], price_ratio = tail(x$close, 1)/head(x$open,  : 
-#                   arguments imply differing number of rows: 0, 1
-  # [1] ticker date   time   open   close 
-  # <0 rows> (or 0-length row.names)
-  #finam_data = finam_data[!(finam_data$ticker=="BANE" | finam_data$ticker=="GAZP"),]
-  
-  # stocks_raw = rbindlist(lapply(split(finam_data, list(finam_data$ticker, finam_data$date), lex.order = TRUE), 
-  #                               function(x) {
-  #                                 print (head(x, 1)[,1:2])
-  #                                 data.frame(head(x,1)[,1:2], 
-  #                                            price_ratio = tail(x$close, 1)/head(x$open, 1), 
-  #                                            ts =I(list(rbind(x$close, x$open))))
-  #                               }))
+
   
   stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker, lex.order = TRUE), 
                             function(df) { 
@@ -56,9 +43,9 @@ load_data = function(){
   # tail's argument n = -(window-1)
   stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
                             FUN=function(df) {
-                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -1)
+                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -19)
                               new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
-                                                        window=2,minimum=2, align='right'))
+                                                        window=20,minimum=20, align='right'))
                               new_df
                               }))
   
@@ -69,8 +56,8 @@ load_data = function(){
 
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
-  xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
-  yi = function(b){ c(0, b, 0.5, 1-b, 1)}
+  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
+  yi = function(b){ c(0, 0, 0, 1-b, 1)}
   plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
@@ -99,7 +86,7 @@ run_portfolio_fs = function(stocks, alpha){
     
     p_t = inputs$trust_level
     
-    w_ = (p_t*w)/sum(p_t*w)
+    w_ = if(sum(p_t)) (p_t*w)/sum(p_t*w) else w
     
     x_t = inputs$price_ratio
     
@@ -125,49 +112,76 @@ stocks = load_data()
 stocks$date = as.factor(stocks$date)
 
 for (d in levels(stocks$date)){
-  if (nrow(stocks[stocks$date==d,]) != 8){
-    stocks = stocks[!(stocks$date==d),]
-  }
+    avail_tickers = stocks[date==d,]$ticker
+    lvls = levels(stocks$ticker)
+    
+    for (t in lvls[!lvls %in% avail_tickers]  ){
+      stocks[nrow(stocks) + 1,] = c(ticker = t, date = d, price_ratio = 1, hurst = 0)
+    }
 }
+
+# delete dates with even one missing instrument
+#for (d in levels(stocks$date)){
+  #if (nrow(stocks[stocks$date==d,]) != nlevels(stocks$ticker)){
+  #stocks = stocks[!(stocks$date==d),]
+  # }
+#}
+
+stocks$date = factor(stocks$date)
+
 
 # algorithm parameters
 
-a = c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
-b = c(0.01, 0.05, 0.1, 0.15, 0.25, 0.3, 0.4, 0.5)
-alpha = c(0.001,0.01,0.1,0.25,1)
+a = c(0.5, 0.6, 0.7, 0.8, 0.9)
+b = c(0.5, 0.7, 0.8, 0.9, 0.95, 0.99)
+alpha = c(0.001, 0.01, 0.1, 0.25, 1)
 
 # portfolio wealth vector for Buy and Hold algorithm
 K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
+
+# constant rebalanced portfolio with 1/N
 K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
+
                               
 # algorithms evaluation output
-res <- data.frame(matrix(ncol = 6, nrow = 0))
-names <- c("a","b","alpha", "profit", "BandH", "SR")
+res <- data.frame(matrix(ncol = 10, nrow = 0))
+names <- c("a", "b", "alpha", "profit", "B&H profit", ">B&H", "Singer profit", ">Singer", "CRP profit", ">CRP")
 colnames(res) <- names
 
 
 for(l in 1:length(alpha)){
-  for(i in 1:length(a)){
-    for(j in 1:length(b)){
-      stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
-      
-      # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
-      K = run_portfolio_fs(stocks, alpha[l])
-      
-      res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, n=1), tail(K_n, n=1), sum(K>K_n)/length(K))
-    }
-  }
-  stocks$trust_level = rep(1,nrow(stocks))
+  print(paste("alpha", alpha[l]))
   
   # portfolio wealth vector for Singer Portfolio algorithm
+  stocks$trust_level = rep(1,nrow(stocks))
   K_z = run_portfolio_fs(stocks, alpha[l])
   
-  res[nrow(res) + 1,] = list(1, 1, alpha[l], tail(K_z, n=1), tail(K_n, n=1), sum(K_z>K_n)/length(K_z)) 
+  res[nrow(res) + 1,] = list(1, 1, alpha[l], tail(K_z, 1), 
+                             tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
+                             tail(K_z, 1), 0, 
+                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z)) 
+  
+  for(i in 1:length(a)){
+    for(j in 1:length(b)){
+
+      # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
+      stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
+      #stocks$trust_level = stocks$hurst
+      K = run_portfolio_fs(stocks, alpha[l])
+      
+      plot(K_n_crp, pch = "*")
+      points(K_n, pch = "*", col = "green")
+      points(K_z, pch = "*", col = "blue")
+      points(K, pch = "*", col = "red")
+      
+      res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1), 
+                                 tail(K_n, 1), sum(K>K_n)/length(K), 
+                                 tail(K_z, 1), sum(K>K_z)/length(K), 
+                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K))
+    }
+  }
 }
 
-# par(mfrow = c(1, 2))
-# plot(K, pch = "*")
-# points(K_z, pch = "*", col = "blue")
-# points(K_n, pch = "*", col = "red")
+  # par(mfrow = c(1, 2))
 
-write.table(res, file="new_stocks_moex_top_short.txt")
+#write.table(res, file="AFLT_GMKN_YAND_2014_2018_10days.txt")
