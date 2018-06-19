@@ -1,4 +1,5 @@
 library(data.table)
+library(reshape2)
 library(ggplot2)
 library(pracma)
 library(useful)
@@ -20,7 +21,7 @@ Hs = function(ts){
 
 
 load_data = function(exp_len){
-  finam_data = read.delim("stocks_10012012_10012018_short_new_new.txt",
+  finam_data = read.delim("stocks_10012012_10012018_short_new.txt",
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
@@ -108,7 +109,7 @@ run_portfolio_fs = function(stocks, alpha){
 }
 
 #TODO: load only if there is no finam_data yet
-stocks = load_data(20)
+stocks = data.frame(load_data(20))
 stocks$date = as.factor(stocks$date)
 
 for (d in levels(stocks$date)){
@@ -171,10 +172,23 @@ for(l in 1:length(alpha)){
       #stocks$trust_level = stocks$hurst
       K = run_portfolio_fs(stocks, alpha[l])
       
-      plot(K_n_crp, pch = "*")
-      points(K_n, pch = "*", col = "green")
-      points(K_z, pch = "*", col = "blue")
-      points(K, pch = "*", col = "red")
+      plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
+                                 "с уровнями доверия" = K, "автоматический(1/N)" = K_n, 
+                                 "постоянный(1/N)" = K_n_crp, "Зингера" = K_z)
+      plot_data = melt(plot_data_raw, id="x")
+      
+      ggplot(data=plot_data,
+             aes(x=x, y=value, colour=variable)) +
+        geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) + 
+        labs(x="Торговый день", y="Относительный капитал", 
+             title = "Ежедневный доход", subtitle = "AFLT, GMKN, YNDX", color='Портфель') + 
+        scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+        theme(panel.background = element_rect(fill = '#ecf7ff'),
+              legend.key = element_rect(fill = "white"),
+              legend.position = c(.25, .95),
+              legend.justification = c("right", "top"),
+              legend.box.just = "right") 
+
       
       res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1),
                                  tail(K_n, 1), sum(K>K_n)/length(K),
