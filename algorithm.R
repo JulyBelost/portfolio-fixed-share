@@ -134,19 +134,19 @@ for (d in levels(stocks$date)){
     }
 }
 # sorting for right dates order
-stocks[order(stocks$ticker, stocks$date)]
+stocks = stocks[order(stocks$ticker, stocks$date),]
 
-############### write prepared stocks dataframe to file ###############
+############ write prepared stocks dataframe to file ############
 dump_filename = sprintf("%s_%sd_hurst.txt", 
                         gsub(".txt$", "", basename(input_path)), 
                         exp_len)
 dump_path = file.path("input", dump_filename)
 write.table(stocks, file=dump_path)
-################################################################
+#################################################################
 
 # algorithm parameters
-a = c(0.3,0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
-b = c(0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9)
+a = c(0.5, 0.6, 0.7, 0.8)
+b = c(0.1)
 
 const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
@@ -159,10 +159,13 @@ K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumpr
 # constant rebalanced portfolio with 1/N
 K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
 
-# best portfolio stock 
-b_s = max(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), prod)))
+# best portfolio stock portfolio
+K_stocks = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
+best_stock = names(which.max(tail(K_stocks, 1)))[1]
+K_bs = K_stocks[,best_stock]
 
 # algorithms evaluation output
+# TODO sum(K>K_bs)/length(K)
 res = data.frame(matrix(ncol = 11, nrow = 0))
 names = c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
           "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
@@ -185,29 +188,27 @@ for(l in 1:length(alpha)){
     for(j in 1:length(b)){
 
       # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
+      # consider to try stocks$trust_level = stocks$hurst
       stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
-      #stocks$trust_level = stocks$hurst
       K = run_portfolio_fs(stocks, alpha[[l]])
       
       plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                                 "С уровнями доверия" = K, "Buy and Hold" = K_n,
-                                 "CRP" = K_n_crp, "Зингера" = K_z)
+                                 "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
       plot_data = melt(plot_data_raw, id="x")
-      
-      
-      # TODO добавить параметры a,b,alpha на график and generate subtitle
       print(ggplot(data=plot_data,
                    aes(x=x, y=value, colour=variable)) +
               geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
               labs(x="Торговый день", y="Относительный капитал",
-                   title = "Ежедневная доходность алгоритмов", subtitle = "AFLT, GMKN, YNDX", color='Портфель') +
+                   title = "Ежедневная доходность алгоритмов", 
+                   subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
+                                      paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
+                   color='Портфель') +
               scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
               theme(panel.background = element_rect(fill = '#ecf7ff'),
                     legend.key = element_rect(fill = "white"),
                     legend.position = c(.25, .95),
                     legend.justification = c("right", "top"),
                     legend.box.just = "right"))
-
 
       res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
                                  tail(K_n, 1), sum(K>K_n)/length(K),
@@ -217,33 +218,22 @@ for(l in 1:length(alpha)){
   }
 }
 
+# plot chart with individual stocks performance
+plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
+plot_stocks = melt(plot_data_raw1, id="x")
+ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
+  geom_line() +
+  labs(x="Торговый день", y="Относительный капитал",
+       title = "Ежедневная доходность акций составляющих портфель", 
+       subtitle = paste(colnames(K_stocks), collapse = ", "), color='Инструмент') +
+  scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+  theme(panel.background = element_rect(fill = '#ecf7ff'),
+        legend.key = element_rect(fill = "white"),
+        legend.position = c(.25, .95),
+        legend.justification = c("right", "top"),
+        legend.box.just = "right")
 
 # TODO find best algo parameters and best singer alpha and make table with x vectors for them
-
-############################TODO make this part automatic########################################  
-#K_bs = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))$GMKN
-#sum(K>K_bs)/length(K)
-
-# stocks_list = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
-# plot_data_raw1 = data.frame(x = as.numeric(1:length(K)),
-#                             "Портфель" = K, "PIKK" = stocks_list$PIKK,
-#                             "LKOH" = stocks_list$LKOH, "SIBN" = stocks_list$SIBN)
-# plot_data1 = melt(plot_data_raw1, id="x")
-# 
-# ggplot(data=plot_data1, aes(x=x, y=value, colour=variable)) +
-#   geom_line() +scale_colour_manual(values=c("red", "green", "lightblue", "yellow" )) +
-#   labs(x="Торговый день", y="Относительный капитал",
-#        title = "Ежедневная доходность акций составляющих портфель", subtitle = "PIKK, LKOH, SIBN", color='Инструмент') +
-#   scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
-#   theme(panel.background = element_rect(fill = '#ecf7ff'),
-#         legend.key = element_rect(fill = "white"),
-#         legend.position = c(.25, .95),
-#         legend.justification = c("right", "top"),
-#         legend.box.just = "right")
-
-# ggplot(data = diamonds) + 
-#   geom_bar(mapping = aes(x = cut))
-
 
 res_filename = sprintf("%s_%sd_hurst.txt", 
                        gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
