@@ -4,15 +4,15 @@ library(ggplot2)
 library(pracma)
 library(useful)
 library(rowr)
+library(rlist)
 
-
+input_file = "./input/finam_raw/stocks_10012012_10032013_AFLT_BANE.txt"
 ################################### DATA LOADING #########################################
 setClass('finamDate')
 setAs("character","finamDate",
       function(from) {date_str <- as.character(from)
                       good_str <- ifelse(nchar(date_str)==6, date_str, paste("0", date_str, sep=""))
                       as.Date(good_str, "%d%m%y") })
-                      #factor(as.Date(good_str, "%d%m%y")) })
 
 
 Hs = function(ts){
@@ -21,35 +21,33 @@ Hs = function(ts){
 
 
 load_data = function(exp_len){
-  finam_data = read.delim("./input/stocks_10012012_10012018_PIKK_SIBN_LKOH.txt",
+  finam_data = read.delim(input_file,
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
                     colClasses = c("factor", "NULL", "finamDate", "character",
                                    "numeric", "NULL", "NULL", "numeric", "NULL"))
   
+  stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker), 
+                                function(df) {
+                                  print (df[1,1])
+                                  rbindlist(lapply(split(df, df$date),
+                                                   function(x) {
+                                                     data.frame(x[1, 1:2], 
+                                                                price_ratio = tail(x$close, 1)/head(x$open, 1), 
+                                                                ts = I(list(rbind(x$close, x$open))))
+                                                   }))
+                                }))
 
-  
-  stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker, lex.order = TRUE), 
-                            function(df) {
-                              print (df[1,1])
-                              rbindlist(lapply(split(df, df$date, lex.order = TRUE),
-                              function(x) {
-                                data.frame(head(x,1)[,1:2], 
-                                           price_ratio = tail(x$close, 1)/head(x$open, 1), 
-                                           ts =I(list(rbind(x$close, x$open))))
-                              }))
-                            }))
-  
-  # tail's argument n = -(window-1)
+  # tail's argument n = -(window-1) to strip days without computed hurst exponent value
   stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
-                            FUN=function(df) {
-                              print (df[1,1:2])
-                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
-                              new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
-                                                        window=exp_len,minimum=exp_len, align='right'))
-                              new_df
-                              }))
+                                function(df) {
+                                  print (df[1,1])
+                                  new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
+                                  new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
+                                                            window=exp_len, minimum=exp_len, align='right'))
+                                  new_df
+                                }))
   
   return(stocks_raw)
 }
@@ -57,7 +55,7 @@ load_data = function(exp_len){
 
 
 # hurst exponent transformation into trust levels
-ht_to_pt = function(a, b, hurst){
+ht_to_pt_matlab = function(a, b, hurst){
   xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
   yi = function(b){ c(0, b, 0.5, 1-b, 1)}
   plot(pchipfun(xi(a),yi(b)))
@@ -66,52 +64,51 @@ ht_to_pt = function(a, b, hurst){
   return(trust_levels)
 }
 
-ht_to_pt1 = function(a, b, hurst){
+ht_to_pt = function(a, b, hurst){
   xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
   yi = function(b){ c(0, 0, 0, b, 1)}
-  #plot(pchipfun(xi(a),yi(b)))
+  plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
 }
 
-# TODO add parameter to choose return value x vectors or K
-# TODO deal with alpha 1/t
+
 # portfolio fixed share algorithm for unreliable instruments
 run_portfolio_fs = function(stocks, alpha){
   # Initial parameters
-  T <- nlevels(stocks$date)      # number of steps
-  N <- nlevels(stocks$ticker)    # number of instruments
+  T = nlevels(stocks$date)      # number of steps
+  N = nlevels(stocks$ticker)    # number of instruments
   
-  w_ <- c()                      # w^*
-  w <- rep(1/N, N)               # w
-  w_m <- rep(1/N, N)             # w^m
+  w_ = c()                      # w^*
+  w = rep(1/N, N)               # w
+  w_m = rep(1/N, N)             # w^m
+  W = data.frame(matrix(ncol = N, nrow = 0)) # w^* matrix
+  colnames(W) = sort(levels(stocks$ticker))
   
-  X_t <- c()
+  X_t = c()
   
-  day_nums = order(levels(stocks$date))
+  days = sort(levels(stocks$date))
   
-  # Algorithm   ###TODO:check for missing values and maybe order of instruments of p_t, x_t
+  # Algorithm   ## !mind dates and tickers order!
   for (t in 1:T){
-    day <- stocks$date[day_nums[t]]
-    inputs = subset(stocks, subset = date == day)
+    inputs = subset(stocks, subset = date == days[t])
     
     p_t = inputs$trust_level
     
+    # TRUST UPDATE
+    # if trust levels for all instruments are zeros then do not make trust update
     w_ = if(sum(p_t)) (p_t*w)/sum(p_t*w) else w
+    W[nrow(W) + 1,] = w_
     
     x_t = inputs$price_ratio
-    
-    X_t[t] <- sum(x_t*w_)
-    
+    X_t[t] = sum(x_t*w_)
     
     # LOSS UPDATE
     w_m = (w * (p_t*x_t + (1 - p_t)*X_t[t]))/X_t[t]
     
     # MIXING(Fixed-Share) UPDATE
-    #alpha = 1/t
-    
-    w = alpha/N + (1 - alpha)*w_m
+    w = alpha(t)/N + (1 - alpha(t))*w_m
   }
   
   K = cumprod(X_t) # portfolio wealth
@@ -119,10 +116,11 @@ run_portfolio_fs = function(stocks, alpha){
   return(K)
 }
 
-#TODO: load only if there is no finam_data yet
-stocks = data.frame(load_data(30))
-stocks$date = as.factor(stocks$date)
 
+if (!exists("stocks")){
+  stocks = data.frame(load_data(exp_len = 30))
+}
+stocks$date = as.factor(stocks$date)
 
 # filling missing dates with price_ratio = 1, hurst = 0
 for (d in levels(stocks$date)){
@@ -134,19 +132,17 @@ for (d in levels(stocks$date)){
     }
 }
 # sorting for right dates order
-stocks = rbindlist(lapply(split(stocks, stocks$ticker), function(df) {df[order(df$date),]}))
-
-# delete dates with even one missing instrument
-#for (d in levels(stocks$date)){
-  #if (nrow(stocks[stocks$date==d,]) != nlevels(stocks$ticker)){stocks = stocks[!(stocks$date==d),]}}
-#stocks$date = factor(stocks$date) #пересчитывает уровни заново
+stocks[order(stocks$ticker, stocks$date)]
 
 
 # algorithm parameters
-
 a = c(0.3,0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
-b = c(0.1, 0.2, 0.3, 0.5, 0.6,0.7,0.8,0.9)
-alpha = c(0.001, 0.01, 0.1, 0.25, 1)
+b = c(0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9)
+
+const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
+const_alpha_fun = function(x) { function(t) {x} }
+alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
+alpha_label = c(const_alphas, "1/t")
 
 # portfolio wealth vector for Buy and Hold algorithm
 K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
@@ -157,22 +153,21 @@ K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
 # best portfolio stock 
 b_s = max(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), prod)))
 
-                              
 # algorithms evaluation output
-res <- data.frame(matrix(ncol = 11, nrow = 0))
-names <- c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
-           "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
-colnames(res) <- names
+res = data.frame(matrix(ncol = 11, nrow = 0))
+names = c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
+          "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
+colnames(res) = names
 
-## make rhis cycle -> function
+## TODO make rhis cycle -> function
 for(l in 1:length(alpha)){
-  print(paste("alpha", alpha[l]))
+  print(paste("alpha", alpha_label[l]))
   
   # portfolio wealth vector for Singer Portfolio algorithm
   stocks$trust_level = rep(1,nrow(stocks))
-  K_z = run_portfolio_fs(stocks, alpha[l])
+  K_z = run_portfolio_fs(stocks, alpha[[l]])
   
-  res[nrow(res) + 1,] = list(1, 1, alpha[l], tail(K_z, 1), 
+  res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1), 
                              tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
                              tail(K_z, 1), 0, 
                              tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), b_s) 
@@ -183,7 +178,7 @@ for(l in 1:length(alpha)){
       # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
       stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
       #stocks$trust_level = stocks$hurst
-      K = run_portfolio_fs(stocks, alpha[l])
+      K = run_portfolio_fs(stocks, alpha[[l]])
       
       plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
                                  "С уровнями доверия" = K, "Buy and Hold" = K_n,
@@ -192,20 +187,20 @@ for(l in 1:length(alpha)){
       
       
       # TODO добавить параметры a,b,alpha на график and generate subtitle
-      ggplot(data=plot_data,
-             aes(x=x, y=value, colour=variable)) +
-        geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
-        labs(x="Торговый день", y="Относительный капитал",
-             title = "Ежедневная доходность алгоритмов", subtitle = "AFLT, GMKN, YNDX", color='Портфель') +
-        scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
-        theme(panel.background = element_rect(fill = '#ecf7ff'),
-              legend.key = element_rect(fill = "white"),
-              legend.position = c(.25, .95),
-              legend.justification = c("right", "top"),
-              legend.box.just = "right")
+      print(ggplot(data=plot_data,
+                   aes(x=x, y=value, colour=variable)) +
+              geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
+              labs(x="Торговый день", y="Относительный капитал",
+                   title = "Ежедневная доходность алгоритмов", subtitle = "AFLT, GMKN, YNDX", color='Портфель') +
+              scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+              theme(panel.background = element_rect(fill = '#ecf7ff'),
+                    legend.key = element_rect(fill = "white"),
+                    legend.position = c(.25, .95),
+                    legend.justification = c("right", "top"),
+                    legend.box.just = "right"))
 
 
-      res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1),
+      res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
                                  tail(K_n, 1), sum(K>K_n)/length(K),
                                  tail(K_z, 1), sum(K>K_z)/length(K),
                                  tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), b_s)
@@ -215,9 +210,6 @@ for(l in 1:length(alpha)){
 
 
 # TODO find best algo parameters and best singer alpha and make table with x vectors for them
-
-
-
 
 ############################TODO make this part automatic########################################  
 #K_bs = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))$GMKN
@@ -244,9 +236,5 @@ for(l in 1:length(alpha)){
 # generate name TODO
 #write.table(res, file="AFLT_GMKN_YAND_2012_2018_20days.txt")
 
-
-#par(mfrow = c(1, 2))
-
 ggplot(data = diamonds) + 
   geom_bar(mapping = aes(x = cut))
-
