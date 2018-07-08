@@ -6,8 +6,10 @@ library(useful)
 library(rowr)
 library(rlist)
 
-input_file = "./input/finam_raw/stocks_10012012_10032013_AFLT_BANE.txt"
-################################### DATA LOADING #########################################
+input_path = file.path("input", "finam_raw", "stocks_10012012_10032013_AFLT_BANE.txt")
+exp_len = 30
+
+################################################# DATA LOADING #################################################
 setClass('finamDate')
 setAs("character","finamDate",
       function(from) {date_str <- as.character(from)
@@ -21,7 +23,7 @@ Hs = function(ts){
 
 
 load_data = function(exp_len){
-  finam_data = read.delim(input_file,
+  finam_data = read.delim(input_path,
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
@@ -40,18 +42,18 @@ load_data = function(exp_len){
                                 }))
 
   # tail's argument n = -(window-1) to strip days without computed hurst exponent value
-  stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
-                                function(df) {
-                                  print (df[1,1])
-                                  new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
-                                  new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
-                                                            window=exp_len, minimum=exp_len, align='right'))
-                                  new_df
-                                }))
+  stocks = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
+                            function(df) {
+                              print (df[1,1])
+                              new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
+                              new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
+                                                        window=exp_len, minimum=exp_len, align='right'))
+                              new_df
+                            }))
   
-  return(stocks_raw)
+  return(stocks)
 }
-##########################################################################################
+#################################################################################################################
 
 
 # hurst exponent transformation into trust levels
@@ -118,7 +120,7 @@ run_portfolio_fs = function(stocks, alpha){
 
 
 if (!exists("stocks")){
-  stocks = data.frame(load_data(exp_len = 30))
+  stocks = data.frame(load_data(exp_len))
 }
 stocks$date = as.factor(stocks$date)
 
@@ -134,6 +136,13 @@ for (d in levels(stocks$date)){
 # sorting for right dates order
 stocks[order(stocks$ticker, stocks$date)]
 
+############### write prepared stocks dataframe to file ###############
+dump_filename = sprintf("%s_%sd_hurst.txt", 
+                        gsub(".txt$", "", basename(input_path)), 
+                        exp_len)
+dump_path = file.path("input", dump_filename)
+write.table(stocks, file=dump_path)
+################################################################
 
 # algorithm parameters
 a = c(0.3,0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
@@ -232,9 +241,12 @@ for(l in 1:length(alpha)){
 #         legend.justification = c("right", "top"),
 #         legend.box.just = "right")
 
+# ggplot(data = diamonds) + 
+#   geom_bar(mapping = aes(x = cut))
 
-# generate name TODO
-#write.table(res, file="AFLT_GMKN_YAND_2012_2018_20days.txt")
 
-ggplot(data = diamonds) + 
-  geom_bar(mapping = aes(x = cut))
+res_filename = sprintf("%s_%sd_hurst.txt", 
+                       gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
+                       exp_len)
+output_path = file.path("results", res_filename)
+write.table(res, file=output_path)
