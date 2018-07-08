@@ -21,7 +21,7 @@ Hs = function(ts){
 
 
 load_data = function(exp_len){
-  finam_data = read.delim("stocks_10012012_10012018_short_new.txt",
+  finam_data = read.delim("./input/stocks_10012012_10012018_PIKK_SIBN_LKOH.txt",
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
                                   "open", "high", "low", "close", "vol"),
@@ -44,6 +44,7 @@ load_data = function(exp_len){
   # tail's argument n = -(window-1)
   stocks_raw = rbindlist(lapply(split(stocks_raw, stocks_raw$ticker), 
                             FUN=function(df) {
+                              print (df[1,1:2])
                               new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
                               new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
                                                         window=exp_len,minimum=exp_len, align='right'))
@@ -57,15 +58,25 @@ load_data = function(exp_len){
 
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
-  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
-  yi = function(b){ c(0, 0, 0, 1-b, 1)}
+  xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
+  yi = function(b){ c(0, b, 0.5, 1-b, 1)}
   plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
 }
 
+ht_to_pt1 = function(a, b, hurst){
+  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
+  yi = function(b){ c(0, 0, 0, b, 1)}
+  #plot(pchipfun(xi(a),yi(b)))
+  
+  trust_levels = pchip(xi(a), yi(b), hurst)
+  return(trust_levels)
+}
 
+# TODO add parameter to choose return value x vectors or K
+# TODO deal with alpha 1/t
 # portfolio fixed share algorithm for unreliable instruments
 run_portfolio_fs = function(stocks, alpha){
   # Initial parameters
@@ -109,9 +120,11 @@ run_portfolio_fs = function(stocks, alpha){
 }
 
 #TODO: load only if there is no finam_data yet
-stocks = data.frame(load_data(20))
+stocks = data.frame(load_data(30))
 stocks$date = as.factor(stocks$date)
 
+
+# filling missing dates with price_ratio = 1, hurst = 0
 for (d in levels(stocks$date)){
     avail_tickers = subset(stocks, subset = date == d)$ticker
     lvls = levels(stocks$ticker)
@@ -120,21 +133,19 @@ for (d in levels(stocks$date)){
       stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
     }
 }
+# sorting for right dates order
+stocks = rbindlist(lapply(split(stocks, stocks$ticker), function(df) {df[order(df$date),]}))
 
 # delete dates with even one missing instrument
 #for (d in levels(stocks$date)){
-  #if (nrow(stocks[stocks$date==d,]) != nlevels(stocks$ticker)){
-  #stocks = stocks[!(stocks$date==d),]
-  # }
-#}
-
-stocks$date = factor(stocks$date)
+  #if (nrow(stocks[stocks$date==d,]) != nlevels(stocks$ticker)){stocks = stocks[!(stocks$date==d),]}}
+#stocks$date = factor(stocks$date) #пересчитывает уровни заново
 
 
 # algorithm parameters
 
-a = c(0.5, 0.6, 0.7, 0.8, 0.9)
-b = c(0.5, 0.7, 0.8, 0.9, 0.95, 0.99)
+a = c(0.3,0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+b = c(0.1, 0.2, 0.3, 0.5, 0.6,0.7,0.8,0.9)
 alpha = c(0.001, 0.01, 0.1, 0.25, 1)
 
 # portfolio wealth vector for Buy and Hold algorithm
@@ -143,6 +154,9 @@ K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumpr
 # constant rebalanced portfolio with 1/N
 K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
 
+# best portfolio stock 
+b_s = max(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), prod)))
+
                               
 # algorithms evaluation output
 res <- data.frame(matrix(ncol = 11, nrow = 0))
@@ -150,8 +164,7 @@ names <- c("a", "b", "alpha", "profit", "B&H profit", ">B&H",
            "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
 colnames(res) <- names
 
-b_s = max(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), prod)))
-
+## make rhis cycle -> function
 for(l in 1:length(alpha)){
   print(paste("alpha", alpha[l]))
   
@@ -173,23 +186,25 @@ for(l in 1:length(alpha)){
       K = run_portfolio_fs(stocks, alpha[l])
       
       plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                                 "с уровнями доверия" = K, "автоматический(1/N)" = K_n, 
-                                 "постоянный(1/N)" = K_n_crp, "Зингера" = K_z)
+                                 "С уровнями доверия" = K, "Buy and Hold" = K_n,
+                                 "CRP" = K_n_crp, "Зингера" = K_z)
       plot_data = melt(plot_data_raw, id="x")
       
+      
+      # TODO добавить параметры a,b,alpha на график and generate subtitle
       ggplot(data=plot_data,
              aes(x=x, y=value, colour=variable)) +
-        geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) + 
-        labs(x="Торговый день", y="Относительный капитал", 
-             title = "Ежедневный доход", subtitle = "AFLT, GMKN, YNDX", color='Портфель') + 
+        geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
+        labs(x="Торговый день", y="Относительный капитал",
+             title = "Ежедневная доходность алгоритмов", subtitle = "AFLT, GMKN, YNDX", color='Портфель') +
         scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
         theme(panel.background = element_rect(fill = '#ecf7ff'),
               legend.key = element_rect(fill = "white"),
               legend.position = c(.25, .95),
               legend.justification = c("right", "top"),
-              legend.box.just = "right") 
+              legend.box.just = "right")
 
-      
+
       res[nrow(res) + 1,] = list(a[i], b[j], alpha[l], tail(K, 1),
                                  tail(K_n, 1), sum(K>K_n)/length(K),
                                  tail(K_z, 1), sum(K>K_z)/length(K),
@@ -198,6 +213,40 @@ for(l in 1:length(alpha)){
   }
 }
 
-  #par(mfrow = c(1, 2))
 
-#write.table(res, file="AFLT_GMKN_YAND_2014_2018_10days.txt")
+# TODO find best algo parameters and best singer alpha and make table with x vectors for them
+
+
+
+
+############################TODO make this part automatic########################################  
+#K_bs = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))$GMKN
+#sum(K>K_bs)/length(K)
+
+# stocks_list = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
+# plot_data_raw1 = data.frame(x = as.numeric(1:length(K)),
+#                             "Портфель" = K, "PIKK" = stocks_list$PIKK,
+#                             "LKOH" = stocks_list$LKOH, "SIBN" = stocks_list$SIBN)
+# plot_data1 = melt(plot_data_raw1, id="x")
+# 
+# ggplot(data=plot_data1, aes(x=x, y=value, colour=variable)) +
+#   geom_line() +scale_colour_manual(values=c("red", "green", "lightblue", "yellow" )) +
+#   labs(x="Торговый день", y="Относительный капитал",
+#        title = "Ежедневная доходность акций составляющих портфель", subtitle = "PIKK, LKOH, SIBN", color='Инструмент') +
+#   scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+#   theme(panel.background = element_rect(fill = '#ecf7ff'),
+#         legend.key = element_rect(fill = "white"),
+#         legend.position = c(.25, .95),
+#         legend.justification = c("right", "top"),
+#         legend.box.just = "right")
+
+
+# generate name TODO
+#write.table(res, file="AFLT_GMKN_YAND_2012_2018_20days.txt")
+
+
+#par(mfrow = c(1, 2))
+
+ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut))
+
