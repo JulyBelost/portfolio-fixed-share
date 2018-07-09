@@ -77,7 +77,7 @@ ht_to_pt = function(a, b, hurst){
 
 
 # portfolio fixed share algorithm for unreliable instruments
-run_portfolio_fs = function(stocks, alpha){
+run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
   # Initial parameters
   T = nlevels(stocks$date)      # number of steps
   N = nlevels(stocks$ticker)    # number of instruments
@@ -113,8 +113,13 @@ run_portfolio_fs = function(stocks, alpha){
     w = alpha(t)/N + (1 - alpha(t))*w_m
   }
   
-  K = cumprod(X_t) # portfolio wealth
+  if (verbose){
+    plot_W_raw = data.frame(x = as.numeric(1:T), W)
+    plot_W = melt(plot_W_raw, id="x")
+    print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area())
+  }
   
+  K = cumprod(X_t) # portfolio wealth
   return(K)
 }
 
@@ -221,7 +226,7 @@ for(l in 1:length(alpha)){
 
 # plot chart with individual stocks performance
 plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
-plot_stocks = melt(plot_data_raw1, id="x")
+plot_stocks = melt(plot_stocks_raw, id="x")
 ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
   geom_line() +
   labs(x="Торговый день", y="Относительный капитал",
