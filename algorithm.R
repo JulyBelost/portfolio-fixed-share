@@ -1,40 +1,33 @@
-library(data.table)
-library(reshape2)
-library(ggplot2)
-library(pracma)
-library(useful)
-library(rowr)
-library(rlist)
+pacman::p_load(reshape2, ggplot2, pracma, useful, rowr, rlist)
 
-input_path = file.path("exp0_market200", "portf_size3", 
-                       "input", "finam_raw", "stocks_10012012_10032013_AFLT_BANE.txt")
-
-exp_len = 30
-
-################################################# DATA LOADING #################################################
 setClass('finamDate')
 setAs("character","finamDate",
       function(from) {date_str <- as.character(from)
                       good_str <- ifelse(nchar(date_str)==6, date_str, paste("0", date_str, sep=""))
                       as.Date(good_str, "%d%m%y") })
 
-
-Hs = function(ts){
+# returns hurst exponent value instead of vector
+hurstexp_ = function(ts){
   return(hurstexp(ts, display=FALSE)[1])
 }
 
 
-load_data = function(exp_len){
-  dump_filename = sprintf("%s_%sd_hurst.txt", 
+# loading data from file
+load_data = function(input_path, exp_len){
+  dump_filename = sprintf("%s_%sd_hurst.txt",
                           gsub(".txt$", "", basename(input_path)), 
                           exp_len)
   dump_path = file.path(dirname(input_path), "..", dump_filename)
   
   if (file.exists(dump_path)){
     stocks = read.delim(dump_path,
-                            sep = ",",
+                            sep = " ",
                             col.names = c("ticker", "date", "price_ratio", "hurst"),
                             colClasses = c("factor", "finamDate", "numeric", "numeric"))
+    
+    # sorting for right dates order
+    stocks = stocks[order(stocks$ticker, stocks$date),]
+    
     return(stocks)
   }
     
@@ -61,30 +54,49 @@ load_data = function(exp_len){
                             function(df) {
                               print (df[1,1])
                               new_df = tail(subset(df, select = c(ticker, date, price_ratio)), -(exp_len-1))
-                              new_df$hurst = as.numeric(rollApply(df$ts, function(x) Hs(c(unlist(x))), 
+                              new_df$hurst = as.numeric(rollApply(df$ts, function(x) hurstexp_(c(unlist(x))), 
                                                         window=exp_len, minimum=exp_len, align='right'))
                               new_df
                             }))
   
+  # manipulation with stocks to get rid of "data.table" type
+  stocks = data.frame(stocks)
+  stocks$date = as.factor(stocks$date)
+  
+  # filling missing dates with price_ratio = 1, hurst = 0
+  for (d in levels(stocks$date)){
+    avail_tickers = subset(stocks, subset = date == d)$ticker
+    lvls = levels(stocks$ticker)
+    
+    for (t in lvls[!lvls %in% avail_tickers]  ){
+      stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
+    }
+  }
+  
+  # sorting for right dates order
+  stocks = stocks[order(stocks$ticker, stocks$date),]
+  
+  # write prepared stocks dataframe to file
+  write.table(stocks, file=dump_path)
+
   return(stocks)
 }
-#################################################################################################################
 
 
 # hurst exponent transformation into trust levels
-ht_to_pt_matlab = function(a, b, hurst){
-  xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
-  yi = function(b){ c(0, b, 0.5, 1-b, 1)}
-  plot(pchipfun(xi(a),yi(b)))
+ht_to_pt = function(a, b, hurst){
+  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
+  yi = function(b){ c(0, 0, 0, b, 1)}
+  #plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
 }
 
-ht_to_pt = function(a, b, hurst){
-  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
-  yi = function(b){ c(0, 0, 0, b, 1)}
-  #plot(pchipfun(xi(a),yi(b)))
+ht_to_pt_matlab = function(a, b, hurst){
+  xi = function(a){ c(0, a-0.1, a, a+0.1, 1)}
+  yi = function(b){ c(0, b, 0.5, 1-b, 1)}
+  plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
@@ -139,32 +151,103 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
 }
 
 
-if (!exists("stocks")){
-  stocks = data.frame(load_data(exp_len))
-}
-stocks$date = as.factor(stocks$date)
-
-# filling missing dates with price_ratio = 1, hurst = 0
-for (d in levels(stocks$date)){
-    avail_tickers = subset(stocks, subset = date == d)$ticker
-    lvls = levels(stocks$ticker)
+# TODO make parameter to only prepare hurst file
+process_portfolio = function(input_path, exp_len){
+  stocks = load_data(input_path, exp_len)
+  
+  # portfolio wealth vector for Buy and Hold algorithm
+  K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
+  
+  # constant rebalanced portfolio with 1/N
+  K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
+  
+  # best portfolio stock portfolio
+  K_stocks = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
+  best_stock = names(which.max(tail(K_stocks, 1)))[1]
+  K_bs = K_stocks[,best_stock]
+  
+  # algorithms evaluation output
+  res = data.frame(matrix(ncol = 12, nrow = 0))
+  names = c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
+            "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock", ">bs")
+  colnames(res) = names
+  
+  for(l in 1:length(alpha)){
+    print(paste("alpha", alpha_label[l]))
     
-    for (t in lvls[!lvls %in% avail_tickers]  ){
-      stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
+    # portfolio wealth vector for Singer Portfolio algorithm
+    stocks$trust_level = rep(1,nrow(stocks))
+    K_z = run_portfolio_fs(stocks, alpha[[l]])
+    
+    res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1), 
+                               tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
+                               tail(K_z, 1), 0, 
+                               tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
+                               b_s, sum(K_z>K_bs)/length(K_z)) 
+    
+    for(i in 1:length(a)){
+      for(j in 1:length(b)){
+  
+        # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
+        # consider to try stocks$trust_level = stocks$hurst
+        stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
+        K = run_portfolio_fs(stocks, alpha[[l]])
+        
+        plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
+                                   "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
+        plot_data = melt(plot_data_raw, id="x")
+        print(ggplot(data=plot_data,
+                     aes(x=x, y=value, colour=variable)) +
+                geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
+                labs(x="Торговый день", y="Относительный капитал",
+                     title = "Ежедневная доходность алгоритмов", 
+                     subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
+                                        paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
+                     color='Портфель') +
+                scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+                theme(panel.background = element_rect(fill = '#ecf7ff'),
+                      legend.key = element_rect(fill = "white"),
+                      legend.position = c(.25, .95),
+                      legend.justification = c("right", "top"),
+                      legend.box.just = "right"))
+  
+        res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
+                                   tail(K_n, 1), sum(K>K_n)/length(K),
+                                   tail(K_z, 1), sum(K>K_z)/length(K),
+                                   tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
+                                   b_s, sum(K>K_bs)/length(K))
+      }
     }
+  }
+  
+  # plot chart with individual stocks performance
+  plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
+  plot_stocks = melt(plot_stocks_raw, id="x")
+  ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
+    geom_line() +
+    labs(x="Торговый день", y="Относительный капитал",
+         title = "Ежедневная доходность акций составляющих портфель", 
+         subtitle = paste(colnames(K_stocks), collapse = ", "), color='Инструмент') +
+    scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+    theme(panel.background = element_rect(fill = '#ecf7ff'),
+          legend.key = element_rect(fill = "white"),
+          legend.position = c(.25, .95),
+          legend.justification = c("right", "top"),
+          legend.box.just = "right")
+  
+  # TODO find best algo parameters and best singer alpha and make table with x vectors for them
+  # TODO save sample of best parameters for big table for all files in directory
+  
+  # TODO automatically save plots into files and their sourse files
+  res_filename = sprintf("%s_%sd_hurst.txt", 
+                         gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
+                         exp_len)
+  output_path = file.path(dirname(input_path), res_filename)
+  write.table(res, file=output_path)
 }
-# sorting for right dates order
-stocks = stocks[order(stocks$ticker, stocks$date),]
 
-############ write prepared stocks dataframe to file ############
-dump_filename = sprintf("%s_%sd_hurst.txt", 
-                        gsub(".txt$", "", basename(input_path)), 
-                        exp_len)
-dump_path = file.path("input", dump_filename)
-write.table(stocks, file=dump_path)
-#################################################################
 
-# algorithm parameters
+############################ algorithm hyperparameters ############################
 a = c(0.5, 0.6, 0.7, 0.8)
 b = c(0.1)
 
@@ -172,95 +255,13 @@ const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
+###################################################################################
 
 
+# TODO make this a vector
+exp_len = 30
+# TODO iterate through directory
+input_path = file.path("exp0_market200", "portf_size3", 
+                       "input", "finam_raw", "stocks_ALRS_RUALR_SNGS_08012012_08072018.txt")
 
-# portfolio wealth vector for Buy and Hold algorithm
-K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
-
-# constant rebalanced portfolio with 1/N
-K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
-
-# best portfolio stock portfolio
-K_stocks = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
-best_stock = names(which.max(tail(K_stocks, 1)))[1]
-K_bs = K_stocks[,best_stock]
-
-# algorithms evaluation output
-res = data.frame(matrix(ncol = 12, nrow = 0))
-names = c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
-          "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock", ">bs")
-colnames(res) = names
-
-## TODO make rhis cycle -> function
-for(l in 1:length(alpha)){
-  print(paste("alpha", alpha_label[l]))
-  
-  # portfolio wealth vector for Singer Portfolio algorithm
-  stocks$trust_level = rep(1,nrow(stocks))
-  K_z = run_portfolio_fs(stocks, alpha[[l]])
-  
-  res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1), 
-                             tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
-                             tail(K_z, 1), 0, 
-                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
-                             b_s, sum(K_z>K_bs)/length(K_z)) 
-  
-  for(i in 1:length(a)){
-    for(j in 1:length(b)){
-
-      # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
-      # consider to try stocks$trust_level = stocks$hurst
-      stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
-      K = run_portfolio_fs(stocks, alpha[[l]])
-      
-      plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                                 "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
-      plot_data = melt(plot_data_raw, id="x")
-      print(ggplot(data=plot_data,
-                   aes(x=x, y=value, colour=variable)) +
-              geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
-              labs(x="Торговый день", y="Относительный капитал",
-                   title = "Ежедневная доходность алгоритмов", 
-                   subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
-                                      paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
-                   color='Портфель') +
-              scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
-              theme(panel.background = element_rect(fill = '#ecf7ff'),
-                    legend.key = element_rect(fill = "white"),
-                    legend.position = c(.25, .95),
-                    legend.justification = c("right", "top"),
-                    legend.box.just = "right"))
-
-      res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
-                                 tail(K_n, 1), sum(K>K_n)/length(K),
-                                 tail(K_z, 1), sum(K>K_z)/length(K),
-                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
-                                 b_s, sum(K>K_bs)/length(K))
-    }
-  }
-}
-
-# plot chart with individual stocks performance
-plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
-plot_stocks = melt(plot_stocks_raw, id="x")
-ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
-  geom_line() +
-  labs(x="Торговый день", y="Относительный капитал",
-       title = "Ежедневная доходность акций составляющих портфель", 
-       subtitle = paste(colnames(K_stocks), collapse = ", "), color='Инструмент') +
-  scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
-  theme(panel.background = element_rect(fill = '#ecf7ff'),
-        legend.key = element_rect(fill = "white"),
-        legend.position = c(.25, .95),
-        legend.justification = c("right", "top"),
-        legend.box.just = "right")
-
-# TODO find best algo parameters and best singer alpha and make table with x vectors for them
-# TODO automatically save plots into files and their sourse files
-
-res_filename = sprintf("%s_%sd_hurst.txt", 
-                       gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
-                       exp_len)
-output_path = file.path("results", res_filename)
-write.table(res, file=output_path)
+# TODO check plots format for journal
