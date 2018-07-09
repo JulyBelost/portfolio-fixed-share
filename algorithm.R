@@ -6,7 +6,9 @@ library(useful)
 library(rowr)
 library(rlist)
 
-input_path = file.path("input", "finam_raw", "stocks_10012012_10032013_AFLT_BANE.txt")
+input_path = file.path("exp0_market200", "portf_size3", 
+                       "input", "finam_raw", "stocks_10012012_10032013_AFLT_BANE.txt")
+
 exp_len = 30
 
 ################################################# DATA LOADING #################################################
@@ -23,6 +25,19 @@ Hs = function(ts){
 
 
 load_data = function(exp_len){
+  dump_filename = sprintf("%s_%sd_hurst.txt", 
+                          gsub(".txt$", "", basename(input_path)), 
+                          exp_len)
+  dump_path = file.path(dirname(input_path), "..", dump_filename)
+  
+  if (file.exists(dump_path)){
+    stocks = read.delim(dump_path,
+                            sep = ",",
+                            col.names = c("ticker", "date", "price_ratio", "hurst"),
+                            colClasses = c("factor", "finamDate", "numeric", "numeric"))
+    return(stocks)
+  }
+    
   finam_data = read.delim(input_path,
                     sep = ",",
                     col.names = c("ticker", "per", "date", "time",
@@ -69,7 +84,7 @@ ht_to_pt_matlab = function(a, b, hurst){
 ht_to_pt = function(a, b, hurst){
   xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
   yi = function(b){ c(0, 0, 0, b, 1)}
-  plot(pchipfun(xi(a),yi(b)))
+  #plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
@@ -114,9 +129,9 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
   }
   
   if (verbose){
-    plot_W_raw = data.frame(x = as.numeric(1:T), W)
-    plot_W = melt(plot_W_raw, id="x")
-    print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area())
+    plot_W = melt(data.frame(x = as.numeric(1:T), W), id="x")
+    print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area() +
+      scale_fill_brewer(palette="Blues"))
   }
   
   K = cumprod(X_t) # portfolio wealth
@@ -157,6 +172,8 @@ const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
+
+
 
 # portfolio wealth vector for Buy and Hold algorithm
 K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
@@ -240,6 +257,7 @@ ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
         legend.box.just = "right")
 
 # TODO find best algo parameters and best singer alpha and make table with x vectors for them
+# TODO automatically save plots into files and their sourse files
 
 res_filename = sprintf("%s_%sd_hurst.txt", 
                        gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
