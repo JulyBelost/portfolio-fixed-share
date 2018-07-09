@@ -1,4 +1,4 @@
-pacman::p_load(reshape2, ggplot2, pracma, useful, rowr, rlist)
+pacman::p_load(reshape2, ggplot2, pracma, useful, rowr, rlist, data.table)
 
 setClass('finamDate')
 setAs("character","finamDate",
@@ -15,16 +15,12 @@ hurstexp_ = function(ts){
 # loading data from file
 load_data = function(input_path, exp_len){
   dump_filename = sprintf("%s_%sd_hurst.txt",
-                          gsub(".txt$", "", basename(input_path)), 
+                          gsub(".txt$", "", basename(input_path)),
                           exp_len)
   dump_path = file.path(dirname(input_path), "..", dump_filename)
   
-  if (file.exists(dump_path)){
-    stocks = read.delim(dump_path,
-                            sep = " ",
-                            col.names = c("ticker", "date", "price_ratio", "hurst"),
-                            colClasses = c("factor", "finamDate", "numeric", "numeric"))
-    
+  if(file.exists(dump_path)){
+    stocks = read.delim(dump_path, sep = " ")
     # sorting for right dates order
     stocks = stocks[order(stocks$ticker, stocks$date),]
     
@@ -40,7 +36,6 @@ load_data = function(input_path, exp_len){
   
   stocks_raw = rbindlist(lapply(split(finam_data, finam_data$ticker), 
                                 function(df) {
-                                  print (df[1,1])
                                   rbindlist(lapply(split(df, df$date),
                                                    function(x) {
                                                      data.frame(x[1, 1:2], 
@@ -64,11 +59,11 @@ load_data = function(input_path, exp_len){
   stocks$date = as.factor(stocks$date)
   
   # filling missing dates with price_ratio = 1, hurst = 0
-  for (d in levels(stocks$date)){
+  for(d in levels(stocks$date)){
     avail_tickers = subset(stocks, subset = date == d)$ticker
     lvls = levels(stocks$ticker)
     
-    for (t in lvls[!lvls %in% avail_tickers]  ){
+    for(t in lvls[!lvls %in% avail_tickers]){
       stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
     }
   }
@@ -77,7 +72,7 @@ load_data = function(input_path, exp_len){
   stocks = stocks[order(stocks$ticker, stocks$date),]
   
   # write prepared stocks dataframe to file
-  write.table(stocks, file=dump_path)
+  write.table(stocks_to_dump, file=dump_path)
 
   return(stocks)
 }
@@ -151,16 +146,16 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
 }
 
 
-# TODO make parameter to only prepare hurst file
-process_portfolio = function(input_path, exp_len){
+process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   stocks = load_data(input_path, exp_len)
+  
+  # exit function if only prepared data dump needed
+  if(dump_only) { return(stocks) }
   
   # portfolio wealth vector for Buy and Hold algorithm
   K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
-  
   # constant rebalanced portfolio with 1/N
   K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
-  
   # best portfolio stock portfolio
   K_stocks = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
   best_stock = names(which.max(tail(K_stocks, 1)))[1]
@@ -258,10 +253,19 @@ alpha_label = c(const_alphas, "1/t")
 ###################################################################################
 
 
-# TODO make this a vector
-exp_len = 30
-# TODO iterate through directory
-input_path = file.path("exp0_market200", "portf_size3", 
-                       "input", "finam_raw", "stocks_ALRS_RUALR_SNGS_08012012_08072018.txt")
+exp_len = c(10, 20, 30)
+port_folders = c("portf_size3", "portf_size4", "portf_size5", "portf_size6")
 
+for (f in port_folders){
+  input_dir = file.path("exp0_market200", f, "input", "finam_raw")
+  files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
+  
+  for (file in files){
+    print(file)
+    for (e in exp_len){
+      print(paste("exp_len =", e))
+      stocks = process_portfolio(file, e, dump_only = TRUE)
+    }
+  }
+}
 # TODO check plots format for journal
