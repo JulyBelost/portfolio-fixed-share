@@ -165,10 +165,9 @@ best_stock = names(which.max(tail(K_stocks, 1)))[1]
 K_bs = K_stocks[,best_stock]
 
 # algorithms evaluation output
-# TODO sum(K>K_bs)/length(K)
-res = data.frame(matrix(ncol = 11, nrow = 0))
+res = data.frame(matrix(ncol = 12, nrow = 0))
 names = c("a", "b", "alpha", "profit", "B&H profit", ">B&H", 
-          "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock")
+          "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock", ">bs")
 colnames(res) = names
 
 ## TODO make rhis cycle -> function
@@ -182,7 +181,8 @@ for(l in 1:length(alpha)){
   res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1), 
                              tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
                              tail(K_z, 1), 0, 
-                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), b_s) 
+                             tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
+                             b_s, sum(K_z>K_bs)/length(K_z)) 
   
   for(i in 1:length(a)){
     for(j in 1:length(b)){
@@ -213,7 +213,8 @@ for(l in 1:length(alpha)){
       res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
                                  tail(K_n, 1), sum(K>K_n)/length(K),
                                  tail(K_z, 1), sum(K>K_z)/length(K),
-                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), b_s)
+                                 tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
+                                 b_s, sum(K>K_bs)/length(K))
     }
   }
 }
