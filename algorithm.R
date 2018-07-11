@@ -72,12 +72,12 @@ load_data = function(input_path, exp_len){
   stocks = stocks[order(stocks$ticker, stocks$date),]
   
   # write prepared stocks dataframe to file
-  write.table(stocks_to_dump, file=dump_path)
+  write.table(stocks, file=dump_path)
 
   return(stocks)
 }
 
-
+# TODO improve function(add more points)
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
   xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
@@ -121,7 +121,7 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     p_t = inputs$trust_level
     
     # TRUST UPDATE
-    # if trust levels for all instruments are zeros then do not make trust update
+    # if trust levels for all instruments are zeros then do not make trust update TODO!!! check
     w_ = if(sum(p_t)) (p_t*w)/sum(p_t*w) else w
     W[nrow(W) + 1,] = w_
     
@@ -150,7 +150,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   stocks = load_data(input_path, exp_len)
   
   # exit function if only prepared data dump needed
-  if(dump_only) { return(stocks) }
+  if(dump_only) { return() }
   
   # portfolio wealth vector for Buy and Hold algorithm
   K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
@@ -178,7 +178,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
                                tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
                                tail(K_z, 1), 0, 
                                tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
-                               b_s, sum(K_z>K_bs)/length(K_z)) 
+                               tail(K_bs, 1), sum(K_z>K_bs)/length(K_z)) 
     
     for(i in 1:length(a)){
       for(j in 1:length(b)){
@@ -187,38 +187,38 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
         # consider to try stocks$trust_level = stocks$hurst
         stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
         K = run_portfolio_fs(stocks, alpha[[l]])
-        
-        plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                                   "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
-        plot_data = melt(plot_data_raw, id="x")
-        print(ggplot(data=plot_data,
-                     aes(x=x, y=value, colour=variable)) +
-                geom_point(size=0.4) +scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
-                labs(x="Торговый день", y="Относительный капитал",
-                     title = "Ежедневная доходность алгоритмов", 
-                     subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
-                                        paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
-                     color='Портфель') +
-                scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
-                theme(panel.background = element_rect(fill = '#ecf7ff'),
-                      legend.key = element_rect(fill = "white"),
-                      legend.position = c(.25, .95),
-                      legend.justification = c("right", "top"),
-                      legend.box.just = "right"))
   
         res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
                                    tail(K_n, 1), sum(K>K_n)/length(K),
                                    tail(K_z, 1), sum(K>K_z)/length(K),
                                    tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
-                                   b_s, sum(K>K_bs)/length(K))
+                                   tail(K_bs, 1), sum(K>K_bs)/length(K))
       }
     }
   }
   
+  # plot chart with all portfolio performance
+  plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
+                             "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
+  plot_data = melt(plot_data_raw, id="x")
+  print(ggplot(data=plot_data, aes(x=x, y=value, colour=variable)) +
+          geom_point(size=0.4) + scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
+          labs(x="Торговый день", y="Относительный капитал",
+               title = "Ежедневная доходность алгоритмов", 
+               subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
+                                  paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
+               color='Портфель') +
+          scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+          theme(panel.background = element_rect(fill = '#ecf7ff'),
+                legend.key = element_rect(fill = "white"),
+                legend.position = c(.25, .95),
+                legend.justification = c("right", "top"),
+                legend.box.just = "right"))
+  
   # plot chart with individual stocks performance
   plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
   plot_stocks = melt(plot_stocks_raw, id="x")
-  ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
+  print(ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
     geom_line() +
     labs(x="Торговый день", y="Относительный капитал",
          title = "Ежедневная доходность акций составляющих портфель", 
@@ -228,7 +228,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           legend.key = element_rect(fill = "white"),
           legend.position = c(.25, .95),
           legend.justification = c("right", "top"),
-          legend.box.just = "right")
+          legend.box.just = "right"))
   
   # TODO find best algo parameters and best singer alpha and make table with x vectors for them
   # TODO save sample of best parameters for big table for all files in directory
@@ -237,14 +237,18 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   res_filename = sprintf("%s_%sd_hurst.txt", 
                          gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
                          exp_len)
-  output_path = file.path(dirname(input_path), res_filename)
+  output_path = file.path(dirname(input_path), "..", "..", "results", res_filename)
+  print(output_path)
+  
   write.table(res, file=output_path)
+  
+  return(res)
 }
 
 
 ############################ algorithm hyperparameters ############################
-a = c(0.5, 0.6, 0.7, 0.8)
-b = c(0.1)
+a = c(0.5, 0.6, 0.7, 0.8, 0.9)
+b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
 const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
@@ -252,20 +256,30 @@ alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / 
 alpha_label = c(const_alphas, "1/t")
 ###################################################################################
 
-
-exp_len = c(10, 20, 30)
-port_folders = c("portf_size3", "portf_size4", "portf_size5", "portf_size6")
+args = commandArgs(trailingOnly = TRUE)
+if(len(args) == 2){
+  exp_len = c(strtoi(args[1]))
+  port_folders = c(args[2])
+} else {
+  exp_len = c(20, 30)
+  port_folders = c("portf_size2", "portf_size3", "portf_size4", "portf_size5", "portf_size6")
+}
 
 for (f in port_folders){
   input_dir = file.path("exp0_market200", f, "input", "finam_raw")
   files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
   
-  for (file in files){
-    print(file)
-    for (e in exp_len){
+  for (e in exp_len){
+    for (file in files){
+      print(file)
       print(paste("exp_len =", e))
-      stocks = process_portfolio(file, e, dump_only = TRUE)
+        process_portfolio(file, e, dump_only = TRUE)
     }
   }
 }
+
+# 
+# TODO different modes of run (dump/not or single file or folder)
 # TODO check plots format for journal
+# TODO solve case when one stock is way better
+# TODO add instrument with zero profit as a way of take out all the money
