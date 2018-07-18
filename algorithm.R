@@ -135,6 +135,7 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     w = alpha(t)/N + (1 - alpha(t))*w_m
   }
   
+  # TODO add p levels as well
   if (verbose){
     plot_W = melt(data.frame(x = as.numeric(1:T), W), id="x")
     print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area() +
@@ -250,7 +251,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
 a = c(0.5, 0.6, 0.7, 0.8, 0.9)
 b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
-const_alphas = c(0.001, 0.01, 0.1, 0.25, 1)
+const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
@@ -261,25 +262,27 @@ if(len(args) == 2){
   exp_len = c(strtoi(args[1]))
   port_folders = c(args[2])
 } else {
-  exp_len = c(20, 30)
+  exp_len = c(10, 20, 30)
   port_folders = c("portf_size2", "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
-for (f in port_folders){
-  input_dir = file.path("exp0_market200", f, "input", "finam_raw")
-  files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
-  
-  for (e in exp_len){
-    for (file in files){
-      print(file)
-      print(paste("exp_len =", e))
-        process_portfolio(file, e, dump_only = TRUE)
+process_folders = function(port_folders, exp_len, dump_only = TRUE){
+  for (f in port_folders){
+    input_dir = file.path("exp0_market200", f, "input", "finam_raw")
+    files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
+    
+    for (e in exp_len){
+      for (file in files){
+        print(file)
+        print(paste("exp_len =", e))
+          process_portfolio(file, e, dump_only)
+      }
     }
   }
 }
 
+
 # 
-# TODO different modes of run (dump/not or single file or folder)
-# TODO check plots format for journal
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
+# TODO check plots format for journal
