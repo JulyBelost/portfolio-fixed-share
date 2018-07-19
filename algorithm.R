@@ -80,9 +80,12 @@ load_data = function(input_path, exp_len){
 # TODO improve function(add more points)
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
-  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
-  yi = function(b){ c(0, 0, 0, b, 1)}
-  #plot(pchipfun(xi(a),yi(b)))
+  xi = function(a){ c(0, 0.5, 0.75-a, 0.75+a, 1)}
+  yi = function(b){ c(0, 0, b*b*b, b, 1)}
+  
+  # xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
+  # yi = function(b){ c(0, 0, 0, b, 1)}
+  # plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
   return(trust_levels)
@@ -193,6 +196,7 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
     
     for(i in 1:length(a)){
       for(j in 1:length(b)){
+        if((b ^ 3) / (0.25 - a) > (b - (b ^ 3)) / (2 * a)) next
   
         # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
         # consider to try stocks$trust_level = stocks$hurst
@@ -291,8 +295,10 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
 
 
 ############################ algorithm hyperparameters ############################
-a_vec = c(0.5, 0.7, 0.9)
-b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
+a_vec = c(0.05, 0.07, 0.09, 0.11, 0.15, 0.18, 0.2, 0.24)
+b_vec = c(0.01, 0.03, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.65, 0.8)
+#a_vec = c(0.5, 0.7, 0.9)
+#b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
 const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
