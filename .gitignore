@@ -2,5 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
-jkportfolio-fixed-share.Rproj
+portfolio-fixed-share.Rproj
 input/finam\ raw/
+exp*
+stocks*
+.DS*
