@@ -121,7 +121,8 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     p_t = inputs$trust_level
     
     # TRUST UPDATE
-    # if trust levels for all instruments are zeros then do not make trust update TODO!!! check
+    # if trust levels for all instruments are zeros then do not make trust update 
+    #TODO check if this works right
     w_ = if(sum(p_t)) (p_t*w)/sum(p_t*w) else w
     W[nrow(W) + 1,] = w_
     
@@ -186,7 +187,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     
     if(tail(K_z, 1) > tail(best_K_z, 1)){
       best_K_z = K_z
-      bzalpha = alpha[l]
+      bzalpha = alpha_label[l]
     }
     
     for(i in 1:length(a)){
@@ -207,7 +208,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           best_K = K
           ba = a[i]
           bb = b[j]
-          balpha = alpha[l]
+          balpha = alpha_label[l]
         }
       }
     }
@@ -219,16 +220,16 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   
     
   # plot chart with all portfolio performance
-  pplot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                             "With trust levels" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = K_z)
+  pplot_data_raw = data.frame(x = as.numeric(1:length(best_K)), 
+                             "With trust levels" = best_K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = best_K_z)
   pplot_data = melt(pplot_data_raw, id="x")
   portf_plot = ggplot(data=pplot_data, aes(x=x, y=value, colour=variable)) +
           geom_point(size=0.4) + scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
           labs(x="Trading day", y="Wealth",
-               subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
-                                  paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]),
+               subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
+                                  paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
                color='Portfolio') +
-          scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+          scale_x_continuous(breaks = seq(0, length(best_K), by = 150)) +
           theme(panel.background = element_rect(fill = '#ecf7ff'),
                 legend.key = element_rect(fill = "white"),
                 legend.position = c(.3, .95),
@@ -237,12 +238,15 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   print(portf_plot)
   
   # plot chart with individual stocks performance
-  splot_data_raw = data.frame(x = as.numeric(1:length(K)), "Portfolio" = K, K_stocks)
+  splot_data_raw = data.frame(x = as.numeric(1:length(best_K)), "Portfolio" = best_K, K_stocks)
   splot_data = melt(splot_data_raw, id="x")
   stocks_plot = ggplot(data=splot_data, aes(x=x, y=value, colour=variable)) +
     geom_line() +
-    labs(x="Trading day", y="Wealth", color='Stock') +
-    scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
+    labs(x="Trading day", y="Wealth", 
+         subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
+                            paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
+         color='Stock') +
+    scale_x_continuous(breaks = seq(0, length(best_K), by = 150)) +
     theme(panel.background = element_rect(fill = '#ecf7ff'),
           legend.key = element_rect(fill = "white"),
           legend.position = c(.25, .95),
@@ -276,10 +280,10 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
 
 
 ############################ algorithm hyperparameters ############################
-a = c(0.5, 0.6, 0.7, 0.8, 0.9)
+a = c(0.5) #, 0.6, 0.7, 0.8, 0.9)
 b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
-const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
+const_alphas = c(0.0001) #, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
@@ -294,7 +298,7 @@ if(len(args) == 2){
   port_folders = c(args[2])
 } else {
   exp_len_c = c(10, 20, 30)
-  port_folders = c("portf_size0") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
+  port_folders = c("portf_size00") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
@@ -322,7 +326,7 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
   }
 }
 
-process_folders(port_folders, exp_len, dump_only = FALSE)
+process_folders(port_folders, exp_len_c, dump_only = FALSE)
 
 # TODO add function for verbose: so it's possible to run only one file with known a,b,alpha and see w,p,x for it ?
 # TODO solve case when one stock is way better
