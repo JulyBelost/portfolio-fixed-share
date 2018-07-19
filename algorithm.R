@@ -168,6 +168,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
             "Singer profit", ">Singer", "CRP profit", ">CRP", "best stock", ">bs")
   colnames(res) = names
   
+  best_K = c(-1)
+  best_K_z = c(-1)
+  
   for(l in 1:length(alpha)){
     print(paste("alpha", alpha_label[l]))
     
@@ -175,11 +178,16 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     stocks$trust_level = rep(1,nrow(stocks))
     K_z = run_portfolio_fs(stocks, alpha[[l]])
     
-    res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1), 
-                               tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
-                               tail(K_z, 1), 0, 
+    res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1),
+                               tail(K_n, 1), sum(K_z>K_n)/length(K_z),
+                               tail(K_z, 1), 0,
                                tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
                                tail(K_bs, 1), sum(K_z>K_bs)/length(K_z)) 
+    
+    if(tail(K_z, 1) > tail(best_K_z, 1)){
+      best_K_z = K_z
+      bzalpha = alpha[l]
+    }
     
     for(i in 1:length(a)){
       for(j in 1:length(b)){
@@ -194,14 +202,20 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
                                    tail(K_z, 1), sum(K>K_z)/length(K),
                                    tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
                                    tail(K_bs, 1), sum(K>K_bs)/length(K))
+        
+        if(tail(K, 1) > tail(best_K, 1)){
+          best_K = K
+          ba = a[i]
+          bb = b[j]
+          balpha = alpha[l]
+        }
       }
     }
   }
   
-  # TODO find best algo parameters and best singer alpha and make table with x vectors for them
-  # TODO save sample of best parameters for big table for all files in directory
+  best_res = res[order(res$profit, decreasing=TRUE),][1:5,]
+  best_res[,'name'] = paste(colnames(K_stocks), collapse = ", ")
   
-  # TODO give appropriate names
   # plot chart with all portfolio performance
   pplot_data_raw = data.frame(x = as.numeric(1:length(K)), 
                              "With trust levels" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = K_z)
@@ -234,11 +248,11 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           legend.box.just = "right")
   print(stocks_plot)
   
-  # saving result to  files
+  # result files saving
   output_path = file.path(dirname(input_path), "..", "..", "results")
   res_filename = sprintf("%s_%sd_hurst.txt", 
                          gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
-                         exp_len[1])
+                         exp_len)
   res_path = file.path(output_path, res_filename)
   print(res_path)
   write.table(res, file=res_path)
@@ -255,7 +269,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   stocks_plot
   dev.off()
   
-  return(res)
+  return(best_res)
 }
 
 
@@ -283,23 +297,24 @@ if(len(args) == 2){
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
 process_folders = function(port_folders, exp_len, dump_only = TRUE){
-  for (f in port_folders){
-    input_dir = file.path("exp0_market200", f, "input", "finam_raw")
+  for (fold in port_folders){
+    input_dir = file.path("exp0_market200", fold, "input", "finam_raw")
     files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
     
     for (e in exp_len){
       for (file in files){
         print(file)
         print(paste("exp_len =", e))
-          process_portfolio(file, e, dump_only)
+          best_params_df = process_portfolio(file, e, dump_only)
       }
     }
   }
 }
 
-process_folders(port_folders, exp_len)
+process_folders(port_folders, exp_len, dump_only = FALSE)
 
 # 
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
 # TODO check plots format for journal
+# TODO make table with x vectors for best K
