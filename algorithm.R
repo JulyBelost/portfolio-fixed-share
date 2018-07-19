@@ -221,37 +221,43 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     
   # plot chart with all portfolio performance
   pplot_data_raw = data.frame(x = as.numeric(1:length(best_K)), 
-                             "With trust levels" = best_K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = best_K_z)
+                            "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = best_K_z, "With trust levels" = best_K)
   pplot_data = melt(pplot_data_raw, id="x")
   portf_plot = ggplot(data=pplot_data, aes(x=x, y=value, colour=variable)) +
-          geom_point(size=0.4) + scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
-          labs(x="Trading day", y="Wealth",
-               subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
-                                  paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
-               color='Portfolio') +
-          scale_x_continuous(breaks = seq(0, length(best_K), by = 150)) +
-          theme(panel.background = element_rect(fill = '#ecf7ff'),
-                legend.key = element_rect(fill = "white"),
-                legend.position = c(.3, .95),
-                legend.justification = c("right", "top"),
-                legend.box.just = "right")
+    geom_point(size=0.4) + scale_colour_brewer(palette = "Spectral") +
+    labs(x="trading day", y="wealth",
+         subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
+                            paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
+         color='Portfolio') +
+    scale_x_continuous(breaks = seq(0, length(best_K), by = 150)) +
+    theme(legend.key = element_rect(fill = NA),
+          legend.position = c(0.05,0.95),
+          legend.justification = c("left","top"),
+          legend.background = element_rect(colour = "black", size=0.2),
+          panel.background = element_blank(),
+          panel.border     = element_rect(colour = "black", fill=NA, size=0.5),
+          panel.grid.major = element_line(colour = "black", linetype=3, size = 0.1), 
+          panel.grid.minor = element_blank())
   print(portf_plot)
   
   # plot chart with individual stocks performance
   splot_data_raw = data.frame(x = as.numeric(1:length(best_K)), "Portfolio" = best_K, K_stocks)
   splot_data = melt(splot_data_raw, id="x")
   stocks_plot = ggplot(data=splot_data, aes(x=x, y=value, colour=variable)) +
-    geom_line() +
-    labs(x="Trading day", y="Wealth", 
+    geom_line() + scale_colour_brewer(palette = "Spectral") +
+    labs(x="trading day", y="wealth", 
          subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
                             paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
          color='Stock') +
     scale_x_continuous(breaks = seq(0, length(best_K), by = 150)) +
-    theme(panel.background = element_rect(fill = '#ecf7ff'),
-          legend.key = element_rect(fill = "white"),
-          legend.position = c(.25, .95),
-          legend.justification = c("right", "top"),
-          legend.box.just = "right")
+    theme(legend.key = element_rect(fill = NA),
+          legend.position = c(0.05,0.95),
+          legend.justification = c("left","top"),
+          legend.background = element_rect(colour = "black", size=0.2),
+          panel.background = element_blank(),
+          panel.border     = element_rect(colour = "black", fill=NA, size=0.5),
+          panel.grid.major = element_line(colour = "black", linetype=3, size = 0.1), 
+          panel.grid.minor = element_blank())
   print(stocks_plot)
   
   # result files saving
@@ -268,10 +274,10 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   
   pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
   splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
-  pdf(file.path(output_path, pplot_filename))
+  pdf(file.path(output_path, pplot_filename), width=16, height=8)
   print(portf_plot)
   dev.off()
-  pdf(file.path(output_path, splot_filename))
+  pdf(file.path(output_path, splot_filename), width=16, height=8)
   print(stocks_plot)
   dev.off()
   
