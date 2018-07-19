@@ -155,9 +155,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   if(dump_only) { return() }
   
   # portfolio wealth vector for Buy and Hold algorithm
-  K_n = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
+  K_bh = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
   # constant rebalanced portfolio with 1/N
-  K_n_crp = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
+  K_n = cumprod(lapply(split(stocks$price_ratio, stocks$date), mean))
   # best portfolio stock portfolio
   K_stocks = data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod))
   best_stock = names(which.max(tail(K_stocks, 1)))[1]
@@ -180,9 +180,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     K_z = run_portfolio_fs(stocks, alpha[[l]])
     
     res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1),
-                               tail(K_n, 1), sum(K_z>K_n)/length(K_z),
+                               tail(K_bh, 1), sum(K_z>K_bh)/length(K_z),
                                tail(K_z, 1), 0,
-                               tail(K_n_crp, 1), sum(K_z>K_n_crp)/length(K_z), 
+                               tail(K_n, 1), sum(K_z>K_n)/length(K_z), 
                                tail(K_bs, 1), sum(K_z>K_bs)/length(K_z)) 
     
     if(tail(K_z, 1) > tail(best_K_z, 1)){
@@ -199,9 +199,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
         K = run_portfolio_fs(stocks, alpha[[l]])
   
         res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
-                                   tail(K_n, 1), sum(K>K_n)/length(K),
+                                   tail(K_bh, 1), sum(K>K_bh)/length(K),
                                    tail(K_z, 1), sum(K>K_z)/length(K),
-                                   tail(K_n_crp, 1), sum(K>K_n_crp)/length(K), 
+                                   tail(K_n, 1), sum(K>K_n)/length(K), 
                                    tail(K_bs, 1), sum(K>K_bs)/length(K))
         
         if(tail(K, 1) > tail(best_K, 1)){
@@ -221,7 +221,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     
   # plot chart with all portfolio performance
   pplot_data_raw = data.frame(x = as.numeric(1:length(best_K)), 
-                            "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = best_K_z, "With trust levels" = best_K)
+                            "Buy and Hold" = K_bh, "CRP" = K_n, "Singer" = best_K_z, "With trust levels" = best_K)
   pplot_data = melt(pplot_data_raw, id="x")
   portf_plot = ggplot(data=pplot_data, aes(x=x, y=value, colour=variable)) +
     geom_point(size=0.4) + scale_colour_brewer(palette = "Spectral") +
