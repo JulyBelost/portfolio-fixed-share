@@ -135,7 +135,7 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     w = alpha(t)/N + (1 - alpha(t))*w_m
   }
   
-  # TODO add p levels as well
+  # TODO add p levels, x as well as matrixes
   if (verbose){
     plot_W = melt(data.frame(x = as.numeric(1:T), W), id="x")
     print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area() +
@@ -215,7 +215,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   
   best_res = res[order(res$profit, decreasing=TRUE),][1:5,]
   best_res[,'name'] = paste(colnames(K_stocks), collapse = ", ")
+  best_res[,'exp'] = exp_len
   
+    
   # plot chart with all portfolio performance
   pplot_data_raw = data.frame(x = as.numeric(1:length(K)), 
                              "With trust levels" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = K_z)
@@ -288,33 +290,41 @@ alpha_label = c(const_alphas, "1/t")
 # otherwise if executed in Rstudio uses exp_len and port_folders defined below in else section
 args = commandArgs(trailingOnly = TRUE)
 if(len(args) == 2){
-  exp_len = c(strtoi(args[1]))
+  exp_len_c = c(strtoi(args[1]))
   port_folders = c(args[2])
 } else {
-  exp_len = c(10, 20, 30)
+  exp_len_c = c(10, 20, 30)
   port_folders = c("portf_size0") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
-process_folders = function(port_folders, exp_len, dump_only = TRUE){
+process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
   for (fold in port_folders){
     input_dir = file.path("exp0_market200", fold, "input", "finam_raw")
     files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
     
-    for (e in exp_len){
+    best_params_df = NULL
+    
+    for (e in exp_len_c){
       for (file in files){
         print(file)
         print(paste("exp_len =", e))
-          best_params_df = process_portfolio(file, e, dump_only)
+          best_params_df_slice = process_portfolio(file, e, dump_only)
+          best_params_df = rbind(best_params_df, best_params_df_slice)
       }
+    }
+    
+    if(!dump_only){
+      summary_filename = sprintf("params_summary%s.txt", fold)
+      summary_path = file.path(input_dir, "..", "..", summary_filename)
+      write.table(best_params_df, file=path)
     }
   }
 }
 
 process_folders(port_folders, exp_len, dump_only = FALSE)
 
-# 
+# TODO add function for verbose: so it's possible to run only one file with known a,b,alpha and see w,p,x for it ?
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
 # TODO check plots format for journal
-# TODO make table with x vectors for best K
