@@ -198,6 +198,9 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     }
   }
   
+  # TODO find best algo parameters and best singer alpha and make table with x vectors for them
+  # TODO save sample of best parameters for big table for all files in directory
+  
   # TODO give appropriate names
   # plot chart with all portfolio performance
   pplot_data_raw = data.frame(x = as.numeric(1:length(K)), 
@@ -231,9 +234,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           legend.box.just = "right")
   print(stocks_plot)
   
-  # TODO find best algo parameters and best singer alpha and make table with x vectors for them
-  # TODO save sample of best parameters for big table for all files in directory
-  
+  # saving result to  files
   output_path = file.path(dirname(input_path), "..", "..", "results")
   res_filename = sprintf("%s_%sd_hurst.txt", 
                          gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
