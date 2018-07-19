@@ -148,7 +148,8 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
 }
 
 
-process_portfolio = function(input_path, exp_len, dump_only = FALSE){
+process_portfolio = function(input_path, exp_len, dump_only=FALSE, 
+                             a=a_vec, b=b_vec, alpha=alpha_vec, alpha_label=alpha_label_vec, verbose = FALSE){
   stocks = load_data(input_path, exp_len)
   
   # exit function if only prepared data dump needed
@@ -177,7 +178,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     
     # portfolio wealth vector for Singer Portfolio algorithm
     stocks$trust_level = rep(1,nrow(stocks))
-    K_z = run_portfolio_fs(stocks, alpha[[l]])
+    K_z = run_portfolio_fs(stocks, alpha[[l]], verbose)
     
     res[nrow(res) + 1,] = list(1, 1, alpha_label[l], tail(K_z, 1),
                                tail(K_bh, 1), sum(K_z>K_bh)/length(K_z),
@@ -196,7 +197,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
         # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
         # consider to try stocks$trust_level = stocks$hurst
         stocks$trust_level = ht_to_pt(a[i],b[j], stocks$hurst)
-        K = run_portfolio_fs(stocks, alpha[[l]])
+        K = run_portfolio_fs(stocks, alpha[[l]], verbose)
   
         res[nrow(res) + 1,] = list(a[i], b[j], alpha_label[l], tail(K, 1),
                                    tail(K_bh, 1), sum(K>K_bh)/length(K),
@@ -238,13 +239,12 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           panel.border     = element_rect(colour = "black", fill=NA, size=0.5),
           panel.grid.major = element_line(colour = "black", linetype=3, size = 0.1), 
           panel.grid.minor = element_blank())
-  print(portf_plot)
   
   # plot chart with individual stocks performance
   splot_data_raw = data.frame(x = as.numeric(1:length(best_K)), "Portfolio" = best_K, K_stocks)
   splot_data = melt(splot_data_raw, id="x")
   stocks_plot = ggplot(data=splot_data, aes(x=x, y=value, colour=variable)) +
-    geom_line() + scale_colour_brewer(palette = "Spectral") +
+    geom_line() + scale_colour_brewer(palette = "RdYlBu") +
     labs(x="trading day", y="wealth", 
          subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
                             paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
@@ -258,41 +258,46 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
           panel.border     = element_rect(colour = "black", fill=NA, size=0.5),
           panel.grid.major = element_line(colour = "black", linetype=3, size = 0.1), 
           panel.grid.minor = element_blank())
-  print(stocks_plot)
   
-  # result files saving
-  output_path = file.path(dirname(input_path), "..", "..", "results")
-  res_filename = sprintf("%s_%sd_hurst.txt", 
-                         gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
-                         exp_len)
-  res_path = file.path(output_path, res_filename)
-  print(res_path)
-  write.table(res, file=res_path)
-  
-  write.table(pplot_data, file=file.path(output_path, sprintf("pplot_data_%s", res_filename)))
-  write.table(splot_data, file=file.path(output_path, sprintf("splot_data_%s", res_filename)))
-  
-  pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
-  splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
-  pdf(file.path(output_path, pplot_filename), width=16, height=8)
-  print(portf_plot)
-  dev.off()
-  pdf(file.path(output_path, splot_filename), width=16, height=8)
-  print(stocks_plot)
-  dev.off()
+  if(verbose){
+    print(portf_plot)
+    print(stocks_plot)
+    return(res)
+  } else {
+    # result files saving
+    output_path = file.path(dirname(input_path), "..", "..", "results")
+    res_filename = sprintf("%s_%sd_hurst.txt", 
+                           gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
+                           exp_len)
+    res_path = file.path(output_path, res_filename)
+    print(res_path)
+    write.table(res, file=res_path)
+    
+    write.table(pplot_data, file=file.path(output_path, sprintf("pplot_data_%s", res_filename)))
+    write.table(splot_data, file=file.path(output_path, sprintf("splot_data_%s", res_filename)))
+    
+    pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
+    splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
+    pdf(file.path(output_path, pplot_filename), width=16, height=8)
+    print(portf_plot)
+    dev.off()
+    pdf(file.path(output_path, splot_filename), width=16, height=8)
+    print(stocks_plot)
+    dev.off()
+  }
   
   return(best_res)
 }
 
 
 ############################ algorithm hyperparameters ############################
-a = c(0.5, 0.7, 0.9)
-b = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
+a_vec = c(0.5, 0.7, 0.9)
+b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
 const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
-alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
-alpha_label = c(const_alphas, "1/t")
+alpha_vec = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
+alpha_label_vec = c(const_alphas, "1/t")
 ###################################################################################
 
 # if called from command line use $ Rscript algorithm.R exp_len portf_fold
@@ -304,7 +309,7 @@ if(len(args) == 2){
   port_folders = c(args[2])
 } else {
   exp_len_c = c(10, 20, 30)
-  port_folders = c("portf_size0") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
+  port_folders = c("portf_size2", "portf_size3", "portf_size4")#, "portf_size5", "portf_size6")
 }
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
@@ -334,7 +339,16 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
 
 process_folders(port_folders, exp_len_c, dump_only = FALSE)
 
-# TODO add function for verbose: so it's possible to run only one file with known a,b,alpha and see w,p,x for it ?
+process_file = function(){
+  file_to_run = file.path("exp0_market200", "portf_size2", "input", "finam_raw", "stocks_TATN_MOEX_08012012_08072018.txt")
+  print(file_to_run)
+  exp_f = 20
+  a_f = c(0.5)
+  b_f = c(0.1)
+  alpha_f = c(0.01) 
+  alpha_label_f = alpha_f
+  process_portfolio(file_to_run, exp_f, dump_only = FALSE, a_f, b_f, alpha_f, alpha_label_f, verbose = TRUE)
+}
+
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
-# TODO check plots format for journal
