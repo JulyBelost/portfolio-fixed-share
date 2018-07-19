@@ -284,7 +284,7 @@ process_folders = function(port_folders, exp_len, dump_only = TRUE){
   }
 }
 
-# process_folders(port_folders, exp_len)
+process_folders(port_folders, exp_len)
 
 # 
 # TODO solve case when one stock is way better
