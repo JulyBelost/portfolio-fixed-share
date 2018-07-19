@@ -269,10 +269,10 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
   pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
   splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
   pdf(file.path(output_path, pplot_filename))
-  portf_plot
+  print(portf_plot)
   dev.off()
   pdf(file.path(output_path, splot_filename))
-  stocks_plot
+  print(stocks_plot)
   dev.off()
   
   return(best_res)
@@ -280,10 +280,10 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
 
 
 ############################ algorithm hyperparameters ############################
-a = c(0.5) #, 0.6, 0.7, 0.8, 0.9)
-b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
+a = c(0.5, 0.7, 0.9)
+b = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
-const_alphas = c(0.0001) #, 0.001, 0.01, 0.1, 0.25, 1)
+const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
@@ -298,7 +298,7 @@ if(len(args) == 2){
   port_folders = c(args[2])
 } else {
   exp_len_c = c(10, 20, 30)
-  port_folders = c("portf_size00") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
+  port_folders = c("portf_size0") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
