@@ -279,7 +279,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
 a = c(0.5, 0.6, 0.7, 0.8, 0.9)
 b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
-const_alphas = c(0.0001) #, 0.001, 0.01, 0.1, 0.25, 1)
+const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
@@ -317,7 +317,7 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
     if(!dump_only){
       summary_filename = sprintf("params_summary%s.txt", fold)
       summary_path = file.path(input_dir, "..", "..", summary_filename)
-      write.table(best_params_df, file=path)
+      write.table(best_params_df, file=summary_path)
     }
   }
 }
