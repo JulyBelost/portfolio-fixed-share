@@ -198,50 +198,61 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
     }
   }
   
+  # TODO give appropriate names
   # plot chart with all portfolio performance
-  plot_data_raw = data.frame(x = as.numeric(1:length(K)), 
-                             "С уровнями доверия" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Зингера" = K_z)
-  plot_data = melt(plot_data_raw, id="x")
-  print(ggplot(data=plot_data, aes(x=x, y=value, colour=variable)) +
+  pplot_data_raw = data.frame(x = as.numeric(1:length(K)), 
+                             "With trust levels" = K, "Buy and Hold" = K_n, "CRP" = K_n_crp, "Singer" = K_z)
+  pplot_data = melt(pplot_data_raw, id="x")
+  portf_plot = ggplot(data=pplot_data, aes(x=x, y=value, colour=variable)) +
           geom_point(size=0.4) + scale_colour_manual(values=c("orange", "blue", "darkgreen", "red")) +
-          labs(x="Торговый день", y="Относительный капитал",
-               title = "Ежедневная доходность алгоритмов", 
+          labs(x="Trading day", y="Wealth",
                subtitle = sprintf("%s (a=%s, b=%s, alpha=%s)", 
-                                  paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]), 
-               color='Портфель') +
+                                  paste(colnames(K_stocks), collapse = ", "), a[i], b[j], alpha_label[l]),
+               color='Portfolio') +
           scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
           theme(panel.background = element_rect(fill = '#ecf7ff'),
                 legend.key = element_rect(fill = "white"),
-                legend.position = c(.25, .95),
+                legend.position = c(.3, .95),
                 legend.justification = c("right", "top"),
-                legend.box.just = "right"))
+                legend.box.just = "right")
+  print(portf_plot)
   
   # plot chart with individual stocks performance
-  plot_stocks_raw = data.frame(x = as.numeric(1:length(K)), "Портфель" = K, K_stocks)
-  plot_stocks = melt(plot_stocks_raw, id="x")
-  print(ggplot(data=plot_stocks, aes(x=x, y=value, colour=variable)) +
+  splot_data_raw = data.frame(x = as.numeric(1:length(K)), "Portfolio" = K, K_stocks)
+  splot_data = melt(splot_data_raw, id="x")
+  stocks_plot = ggplot(data=splot_data, aes(x=x, y=value, colour=variable)) +
     geom_line() +
-    labs(x="Торговый день", y="Относительный капитал",
-         title = "Ежедневная доходность акций составляющих портфель", 
-         subtitle = paste(colnames(K_stocks), collapse = ", "), color='Инструмент') +
+    labs(x="Trading day", y="Wealth", color='Stock') +
     scale_x_continuous(breaks = seq(0, length(K), by = 150)) +
     theme(panel.background = element_rect(fill = '#ecf7ff'),
           legend.key = element_rect(fill = "white"),
           legend.position = c(.25, .95),
           legend.justification = c("right", "top"),
-          legend.box.just = "right"))
+          legend.box.just = "right")
+  print(stocks_plot)
   
   # TODO find best algo parameters and best singer alpha and make table with x vectors for them
   # TODO save sample of best parameters for big table for all files in directory
   
-  # TODO automatically save plots into files and their sourse files
+  output_path = file.path(dirname(input_path), "..", "..", "results")
   res_filename = sprintf("%s_%sd_hurst.txt", 
                          gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
-                         exp_len)
-  output_path = file.path(dirname(input_path), "..", "..", "results", res_filename)
-  print(output_path)
+                         exp_len[1])
+  res_path = file.path(output_path, res_filename)
+  print(res_path)
+  write.table(res, file=res_path)
   
-  write.table(res, file=output_path)
+  write.table(pplot_data, file=file.path(output_path, sprintf("pplot_data_%s", res_filename)))
+  write.table(splot_data, file=file.path(output_path, sprintf("splot_data_%s", res_filename)))
+  
+  pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
+  splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
+  pdf(file.path(output_path, pplot_filename))
+  portf_plot
+  dev.off()
+  pdf(file.path(output_path, splot_filename))
+  stocks_plot
+  dev.off()
   
   return(res)
 }
@@ -251,7 +262,7 @@ process_portfolio = function(input_path, exp_len, dump_only = FALSE){
 a = c(0.5, 0.6, 0.7, 0.8, 0.9)
 b = c(0.9,0.8,0.7,0.6,0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
-const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
+const_alphas = c(0.0001) #, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
 alpha = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label = c(const_alphas, "1/t")
@@ -269,6 +280,7 @@ if(len(args) == 2){
   port_folders = c("portf_size0") #, "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
+# iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
 process_folders = function(port_folders, exp_len, dump_only = TRUE){
   for (f in port_folders){
     input_dir = file.path("exp0_market200", f, "input", "finam_raw")
