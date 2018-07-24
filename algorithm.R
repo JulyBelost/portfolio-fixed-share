@@ -11,12 +11,12 @@ hurstexp_ = function(ts){
   return(hurstexp(ts, display=FALSE)[1])
 }
 
-
 # loading data from file
 load_data = function(input_path, exp_len){
   dump_filename = sprintf("%s_%sd_hurst.txt",
                           gsub(".txt$", "", basename(input_path)),
                           exp_len)
+  # TODO: change folders order in input directory
   dump_path = file.path(dirname(input_path), "..", dump_filename)
   
   if(file.exists(dump_path)){
@@ -63,6 +63,7 @@ load_data = function(input_path, exp_len){
     avail_tickers = subset(stocks, subset = date == d)$ticker
     lvls = levels(stocks$ticker)
     
+    # TODO: is hurst should be zero
     for(t in lvls[!lvls %in% avail_tickers]){
       stocks[nrow(stocks) + 1,] = list(t, d, 1, 0)
     }
@@ -77,7 +78,6 @@ load_data = function(input_path, exp_len){
   return(stocks)
 }
 
-# TODO improve function(add more points)
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
   xi = function(a){ c(0, 0.5, 0.75-a, 0.75+a, 1)}
@@ -125,7 +125,7 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     
     # TRUST UPDATE
     # if trust levels for all instruments are zeros then do not make trust update 
-    #TODO check if this works right
+    ## !mind if this works right!
     w_ = if(sum(p_t)) (p_t*w)/sum(p_t*w) else w
     W[nrow(W) + 1,] = w_
     
@@ -139,7 +139,7 @@ run_portfolio_fs = function(stocks, alpha, verbose = FALSE){
     w = alpha(t)/N + (1 - alpha(t))*w_m
   }
   
-  # TODO add p levels, x as well as matrixes
+  # TODO: add p levels, x
   if (verbose){
     plot_W = melt(data.frame(x = as.numeric(1:T), W), id="x")
     print(ggplot(data=plot_W, aes(x=x, y=value, fill=variable)) + geom_area() +
@@ -156,7 +156,7 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
   stocks = load_data(input_path, exp_len)
   
   # exit function if only prepared data dump needed
-  if(dump_only) { return() }
+  if(dump_only) return()
   
   # portfolio wealth vector for Buy and Hold algorithm
   K_bh = rowMeans(data.frame(lapply(split(stocks$price_ratio, stocks$ticker), cumprod)))
@@ -196,7 +196,8 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
     
     for(i in 1:length(a)){
       for(j in 1:length(b)){
-        if((b ^ 3) / (0.25 - a) > (b - (b ^ 3)) / (2 * a)) next
+        # check is convexity of function ht_to_pt constant
+        #if((b ^ 3) / (0.25 - a) > (b - (b ^ 3)) / (2 * a)) next
   
         # portfolio wealth vector for Portfolio Fixed-Share for unreliable instruments algorithm
         # consider to try stocks$trust_level = stocks$hurst
@@ -282,10 +283,14 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
     
     pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
     splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
-    pdf(file.path(output_path, pplot_filename), width=16, height=8)
+    
+    setEPS()
+    postscript(file.path(output_path, pplot_filename))
+    #pdf(file.path(output_path, pplot_filename), width=16, height=8)
     print(portf_plot)
     dev.off()
-    pdf(file.path(output_path, splot_filename), width=16, height=8)
+    postscript(file.path(output_path, splot_filename))
+    #pdf(file.path(output_path, splot_filename), width=16, height=8)
     print(stocks_plot)
     dev.off()
   }
@@ -296,7 +301,7 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
 
 ############################ algorithm hyperparameters ############################
 a_vec = c(0.05, 0.07, 0.09, 0.11, 0.15, 0.18, 0.2, 0.24)
-b_vec = c(0.01, 0.03, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.65, 0.8)
+b_vec = c(0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.65, 0.8)
 #a_vec = c(0.5, 0.7, 0.9)
 #b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
@@ -315,13 +320,13 @@ if(len(args) == 2){
   port_folders = c(args[2])
 } else {
   exp_len_c = c(10, 20, 30)
-  port_folders = c("portf_size2", "portf_size3", "portf_size4")#, "portf_size5", "portf_size6")
+  port_folders = c("portf_size0", "portf_size2", "portf_size3", "portf_size4", "portf_size5", "portf_size6")
 }
 
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
 process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
   for (fold in port_folders){
-    input_dir = file.path("exp0_market200", fold, "input", "finam_raw")
+    input_dir = file.path("exp01_market200_new_ht2pt", fold, "input", "finam_raw")
     files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
     
     best_params_df = NULL
@@ -344,17 +349,20 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
 }
 
 process_folders(port_folders, exp_len_c, dump_only = FALSE)
+print(warnings())
 
 process_file = function(){
   file_to_run = file.path("exp0_market200", "portf_size2", "input", "finam_raw", "stocks_TATN_MOEX_08012012_08072018.txt")
   print(file_to_run)
-  exp_f = 20
-  a_f = c(0.5)
-  b_f = c(0.1)
-  alpha_f = c(0.01) 
-  alpha_label_f = alpha_f
-  process_portfolio(file_to_run, exp_f, dump_only = FALSE, a_f, b_f, alpha_f, alpha_label_f, verbose = TRUE)
+  
+  alpha_const_f = 0.01
+  alpha_f = list(if(is.null(alpha_const_f)) function(t) {1 / t} else function(t) {alpha_const_f})
+  alpha_label_f = c(const_alphas, "1/t")
+  
+  process_portfolio(input_path = file_to_run, dump_only = FALSE, verbose = FALSE,
+                    exp_len=20, a=c(0.5), b=c(0.1), alpha=alpha_f, alpha_label=alpha_label_f)
 }
 
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
+
