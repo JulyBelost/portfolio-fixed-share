@@ -246,10 +246,10 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
           panel.grid.minor = element_blank())
   
   # plot chart with individual stocks performance
-  splot_data_raw = data.frame(x = as.numeric(1:length(best_K)), "Portfolio" = best_K, K_stocks)
+  splot_data_raw = data.frame(x = as.numeric(1:length(best_K)), K_stocks, "Portfolio" = best_K)
   splot_data = melt(splot_data_raw, id="x")
   stocks_plot = ggplot(data=splot_data, aes(x=x, y=value, colour=variable)) +
-    geom_line() + scale_colour_brewer(palette = "RdYlBu") +
+    geom_line() + geom_point(size=0.15) + scale_colour_brewer(palette = "Set1") +
     labs(x="trading day", y="wealth", 
          subtitle = sprintf("%s (a=%s, b=%s, alpha=%s, alpha_Singer=%s)", 
                             paste(colnames(K_stocks), collapse = ", "), ba, bb, balpha, bzalpha),
@@ -281,16 +281,16 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
     write.table(pplot_data, file=file.path(output_path, sprintf("pplot_data_%s", res_filename)))
     write.table(splot_data, file=file.path(output_path, sprintf("splot_data_%s", res_filename)))
     
-    pplot_filename = sprintf("%s_portfolios.pdf", gsub(".txt$", "", res_filename))
-    splot_filename = sprintf("%s_stocks.pdf", gsub(".txt$", "", res_filename))
+    pplot_filename = sprintf("%s_portfolios", gsub(".txt$", "", res_filename))
+    splot_filename = sprintf("%s_stocks", gsub(".txt$", "", res_filename))
     
     setEPS()
-    postscript(file.path(output_path, pplot_filename))
-    #pdf(file.path(output_path, pplot_filename), width=16, height=8)
+    #postscript(file.path(output_path, sprintf("%s.eps", pplot_filename)), width=16, height=8)
+    pdf(file.path(output_path, sprintf("%s.pdf", pplot_filename)), width=16, height=8)
     print(portf_plot)
     dev.off()
-    postscript(file.path(output_path, splot_filename))
-    #pdf(file.path(output_path, splot_filename), width=16, height=8)
+    #postscript(file.path(output_path, sprintf("%s.eps", splot_filename)), width=16, height=8)
+    pdf(file.path(output_path, sprintf("%s.pdf", splot_filename)), width=16, height=8)
     print(stocks_plot)
     dev.off()
   }
@@ -310,6 +310,18 @@ const_alpha_fun = function(x) { function(t) {x} }
 alpha_vec = list.append(sapply(const_alphas, FUN=const_alpha_fun), function(t) {1 / t})
 alpha_label_vec = c(const_alphas, "1/t")
 ###################################################################################
+
+process_file = function(){
+  file_to_run = file.path("exp0_market200", "portf_size2", "input", "finam_raw", "stocks_TATN_MOEX_08012012_08072018.txt")
+  print(file_to_run)
+  
+  alpha_const_f = 0.01
+  alpha_f = list(if(is.null(alpha_const_f)) function(t) {1 / t} else function(t) {alpha_const_f})
+  alpha_label_f = c(if(is.null(alpha_const_f)) "1/t" else alpha_const_f)
+  
+  process_portfolio(input_path = file_to_run, dump_only = FALSE, verbose = TRUE,
+                    exp_len=20, a=c(0.11), b=c(0.1), alpha=alpha_f, alpha_label=alpha_label_f)
+}
 
 # if called from command line use $ Rscript algorithm.R exp_len portf_fold
 # where exp_len and portf_fold are single values
@@ -349,19 +361,8 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
 }
 
 process_folders(port_folders, exp_len_c, dump_only = FALSE)
-print(warnings())
 
-process_file = function(){
-  file_to_run = file.path("exp0_market200", "portf_size2", "input", "finam_raw", "stocks_TATN_MOEX_08012012_08072018.txt")
-  print(file_to_run)
-  
-  alpha_const_f = 0.01
-  alpha_f = list(if(is.null(alpha_const_f)) function(t) {1 / t} else function(t) {alpha_const_f})
-  alpha_label_f = c(const_alphas, "1/t")
-  
-  process_portfolio(input_path = file_to_run, dump_only = FALSE, verbose = FALSE,
-                    exp_len=20, a=c(0.5), b=c(0.1), alpha=alpha_f, alpha_label=alpha_label_f)
-}
+print(warnings())
 
 # TODO solve case when one stock is way better
 # TODO add instrument with zero profit as a way of take out all the money
