@@ -16,8 +16,7 @@ load_data = function(input_path, exp_len){
   dump_filename = sprintf("%s_%sd_hurst.txt",
                           gsub(".txt$", "", basename(input_path)),
                           exp_len)
-  # TODO: change folders order in input directory
-  dump_path = file.path(dirname(input_path), "..", dump_filename)
+  dump_path = file.path(dirname(input_path), "hurst_data", dump_filename)
   
   if(file.exists(dump_path)){
     stocks = read.delim(dump_path, sep = " ")
@@ -80,11 +79,11 @@ load_data = function(input_path, exp_len){
 
 # hurst exponent transformation into trust levels
 ht_to_pt = function(a, b, hurst){
-  xi = function(a){ c(0, 0.5, 0.75-a, 0.75+a, 1)}
-  yi = function(b){ c(0, 0, b*b*b, b, 1)}
+  # xi = function(a){ c(0, 0.5, 0.75-a, 0.75+a, 1)}
+  # yi = function(b){ c(0, 0, b*b*b, b, 1)}
   
-  # xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
-  # yi = function(b){ c(0, 0, 0, b, 1)}
+  xi = function(a){ c(0, 0.49, a, a+0.1, 1)}
+  yi = function(b){ c(0, 0, 0, b, 1)}
   # plot(pchipfun(xi(a),yi(b)))
   
   trust_levels = pchip(xi(a), yi(b), hurst)
@@ -270,7 +269,7 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
     return(res)
   } else {
     # result files saving
-    output_path = file.path(dirname(input_path), "..", "..", "results")
+    output_path = file.path(dirname(input_path), "..", "results")
     res_filename = sprintf("%s_%sd_hurst.txt", 
                            gsub(".txt$", "", gsub("^stocks_", "", basename(input_path))), 
                            exp_len)
@@ -300,10 +299,10 @@ process_portfolio = function(input_path, exp_len, dump_only=FALSE,
 
 
 ############################ algorithm hyperparameters ############################
-a_vec = c(0.05, 0.07, 0.09, 0.11, 0.15, 0.18, 0.2, 0.24)
-b_vec = c(0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.65, 0.8)
-#a_vec = c(0.5, 0.7, 0.9)
-#b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
+#a_vec = c(0.05, 0.07, 0.09, 0.11, 0.15, 0.18, 0.2, 0.24)
+#b_vec = c(0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.65, 0.8)
+a_vec = c(0.5, 0.7, 0.9)
+b_vec = c(0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
 
 const_alphas = c(0.0001, 0.001, 0.01, 0.1, 0.25, 1)
 const_alpha_fun = function(x) { function(t) {x} }
@@ -312,7 +311,7 @@ alpha_label_vec = c(const_alphas, "1/t")
 ###################################################################################
 
 process_file = function(){
-  file_to_run = file.path("exp0_market200", "portf_size2", "input", "finam_raw", "stocks_TATN_MOEX_08012012_08072018.txt")
+  file_to_run = file.path("exp0_market200", "portf_size2", "input", "stocks_TATN_MOEX_08012012_08072018.txt")
   print(file_to_run)
   
   alpha_const_f = 0.01
@@ -338,7 +337,7 @@ if(len(args) == 2){
 # iterate through files in choosen folders and calls process_portfolio function for them with different exp_len values
 process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
   for (fold in port_folders){
-    input_dir = file.path("exp01_market200_new_ht2pt", fold, "input", "finam_raw")
+    input_dir = file.path("exp01_market200_new_ht2pt", fold, "input")
     files = list.files(path=input_dir, pattern="*.txt", full.names = TRUE)
     
     best_params_df = NULL
@@ -354,7 +353,7 @@ process_folders = function(port_folders, exp_len_c, dump_only = TRUE){
     
     if(!dump_only){
       summary_filename = sprintf("params_summary%s.txt", fold)
-      summary_path = file.path(input_dir, "..", "..", summary_filename)
+      summary_path = file.path(input_dir, "..", summary_filename)
       write.table(best_params_df, file=summary_path)
     }
   }
